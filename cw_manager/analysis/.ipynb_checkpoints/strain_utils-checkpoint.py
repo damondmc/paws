@@ -20,6 +20,7 @@ def age_strainLimit(tau, Izz, I0, r):
     h0 = 2.3e-24 * (1./r) * np.sqrt((1000/tau) * (Izz/I0))
     return h0
 
+# check the number 
 # Function to compute the gravitational wave strain from ellipticity
 def h0_from_ellipticity(freq, e, Izz, I0, r):
     """
@@ -55,9 +56,11 @@ def ellipticity_from_h0(freq, h0, Izz, I0, r):
     float: Ellipticity (e).
     """
     # Ellipticity calculation formula
-    e = h0 * (r/1.) * (1./1.1e-24) * (I0/Izz) * (1.0e3/freq)**2 * 1.0e-6
+    e = 9.46e-5 * (h0 /1e-24) * (I0/Izz) * (r/1.) * (1e2/freq)**2 
     return e
 
+
+### check the number 
 # Function to compute the strain from the braking index parameter alpha
 def h0_from_alpha(freq, alpha, Izz, I0, r):
     """
@@ -93,5 +96,5 @@ def alpha_from_h0(freq, h0, Izz, I0, r):
     float: Braking index parameter (alpha).
     """
     # Alpha calculation formula
-    alpha = h0 * (r/1.) * (1./3.6e-23) * (1.0e3/freq)**3 * 1.0e-3
+    alpha = 0.028 * (h0/1e-24) * (r/1.) * (1e2/freq)**3
     return alpha

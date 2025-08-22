@@ -29,7 +29,7 @@ class injectionParams:
         injData =np.recarray((nInj,), dtype=[(key, '>f8') for key in (self.injParamName+freqParamName[1:])]) 
 
         for i in range(nInj):
-            injData[i]['psi'] = np.random.uniform(0,np.pi/4.0)
+            injData[i]['psi'] = np.random.uniform(-np.pi/4,np.pi/4)
             # alpha is uniformly distributed in [0, 2pi]
             injData[i]["Alpha"] = np.random.uniform(self.target.alpha-skyUncertainty, self.target.alpha+skyUncertainty)
             # sin(delta) is uniformly distributed in [-1, 1]
