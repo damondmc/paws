@@ -10,6 +10,57 @@ from ..analysis import readFile as rf
 from ..utils import filePath as fp
 from pathlib import Path    
 
+
+def skySampler(target_ra, target_dec, skyUncertainty, n_samples):
+    """
+    Sample sky locations uniformly within a circular region in ICRS coordinates.
+    
+    Parameters:
+    - target_ra (float): Target Right Ascension (RA) in radians.
+    - target_dec (float): Target Declination (Dec) in radians.
+    - skyUncertainty (float): Angular radius of the circular region in radians.
+    - n_samples (int): Number of points to sample.
+    
+    Returns:
+    - alpha (ndarray): Array of sampled RA values in radians [0, 2pi].
+    - delta (ndarray): Array of sampled Dec values in radians [-pi/2, pi/2].
+    """
+    # Sample points uniformly within a circular cap
+    z_min = np.cos(skyUncertainty)  # Lower bound for cos(theta)
+    z = np.random.uniform(z_min, 1.0, n_samples)  # Sample cos(theta) uniformly
+    theta = np.arccos(z)  # Angular separation from the center (in radians)
+    phi = np.random.uniform(0, 2 * np.pi, n_samples)  # Azimuthal angle in [0, 2pi]
+
+    # Unit vector of the target position in ICRS coordinates
+    z0 = np.sin(target_dec)
+    r0 = np.cos(target_dec)
+    x0 = r0 * np.cos(target_ra)
+    y0 = r0 * np.sin(target_ra)
+
+    # Initialize arrays for sampled ICRS coordinates
+    alpha = np.zeros(n_samples)  # Right Ascension (RA)
+    delta = np.zeros(n_samples)  # Declination (Dec)
+
+    # Full spherical transformation for each sampled point
+    for i in range(n_samples):
+        cos_theta = np.cos(theta[i])
+        sin_theta = np.sin(theta[i])
+        cos_phi = np.cos(phi[i])
+        sin_phi = np.sin(phi[i])
+        
+        # Compute new unit vector (x, y, z) after rotation
+        x = cos_theta * x0 + sin_theta * (cos_phi * (-y0) + sin_phi * z0 * x0 / r0)
+        y = cos_theta * y0 + sin_theta * (cos_phi * x0 + sin_phi * z0 * y0 / r0)
+        z = cos_theta * z0 - sin_theta * sin_phi * r0
+        
+        # Convert back to ICRS RA (alpha) and Dec (delta)
+        delta[i] = np.arcsin(z)
+        alpha[i] = np.arctan2(y, x) % (2 * np.pi)  # Ensure alpha is in [0, 2pi]
+
+    return alpha, delta
+
+
+
 class injectionParams:    
     def __init__(self, target, obsDay, cohDay, fBand=0.1):
         self.target = target
@@ -31,10 +82,13 @@ class injectionParams:
         for i in range(nInj):
             injData[i]['psi'] = np.random.uniform(-np.pi/4,np.pi/4)
             # alpha is uniformly distributed in [0, 2pi]
-            injData[i]["Alpha"] = np.random.uniform(self.target.alpha-skyUncertainty, self.target.alpha+skyUncertainty)
+            #injData[i]["Alpha"] = np.random.uniform(self.target.alpha-skyUncertainty, self.target.alpha+skyUncertainty)
             # sin(delta) is uniformly distributed in [-1, 1]
-            sinDelta = np.random.uniform(np.sin(self.target.delta-skyUncertainty), np.sin(self.target.delta+skyUncertainty))
-            injData[i]["Delta"] = np.arcsin(sinDelta)
+            #sinDelta = np.random.uniform(np.sin(self.target.delta-skyUncertainty), np.sin(self.target.delta+skyUncertainty))
+            #injData[i]["Delta"] = np.arcsin(sinDelta)
+                
+            injData[i]["Alpha"], injData[i]["Delta"] = skySampler(self.target.alpha, self.target.delta, skyUncertainty, 1)
+
             injData[i]["refTime"] = self.refTime
             cosi = np.random.uniform(-1,1)
             _h0 = utils.genh0Points(i, h0, nInj, nAmp) 

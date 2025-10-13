@@ -5,9 +5,7 @@ from astropy.io import fits
 from astropy.table import Table
 from . import frequencyRange as fr
 from ..utils import setup_parameter as setup
-from ..utils import filePath as fp
-from pathlib import Path
-                
+               
 class followUpParams():    
     def __init__(self, target, obsDay, fBand=0.1):
         self.obsDay = obsDay
@@ -46,8 +44,7 @@ class followUpParams():
                 data.add_column(f4band, name=_df)
                 
         return fits.BinTableHDU(data=data)
-      
-     
+           
     def genFollowUpParam(self, data, oldFreqDerivOrder, newFreqDerivOrder, cluster=False, workInLocalDir=False): 
         if oldFreqDerivOrder > 4 or newFreqDerivOrder > 4:
             print('Error: frequency derivative order larger than 4.')
