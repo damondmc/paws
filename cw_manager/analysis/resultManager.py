@@ -50,7 +50,7 @@ class resultManager():
             templateList.append(rf.readTemplateCount(outFilePath))
         return templateList
         
-    def calMean2F_threshold(self, cohDay, freq, nJobs):
+    def calMean2F_threshold(self, cohDay, freq, nJobs, nSeg):
         """
         Parameters:
         - cohDay: int
@@ -65,7 +65,7 @@ class resultManager():
         # Get the number of templates based on coherence time, frequency, and job count
         nTemp = self._readTemplateCount(cohDay, freq, nJobs)
         # Calculate the mean 2F threshold using the total templates and segment count
-        mean2F_th = tools.mean2F_threshold(sum(nTemp), self.nSeg)            
+        mean2F_th = tools.mean2F_threshold(sum(nTemp), nSeg)            
         return mean2F_th
 
     def makeOutlierTable(self, data, spacing, mean2F_th, toplistLimit=1000, freqDerivOrder=2):    
@@ -182,13 +182,13 @@ class resultManager():
             weave_data = fits.getdata(weaveFilePath, 1)
             spacing = utils.getSpacing(weaveFilePath, freqDerivOrder)
             # Generate outlier table for the job and assess if it reached the limit
-            outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th, numTopListLimit, freqDerivOrder)  
+            _outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th, numTopListLimit, freqDerivOrder)  
 
-            if len(outlier) == numTopListLimit:
+            if len(_outlier) == numTopListLimit:
                 info_data[i] = freq, jobIndex, 0, 1  # Job saturated if top limit is reached
             else:
-                info_data[i] = freq, jobIndex, len(outlier), 0
-                outlierTableList.append( outlier )
+                info_data[i] = freq, jobIndex, len(_outlier), 0
+                outlierTableList.append( _outlier )
         
         # Calculate bands that aren't saturated 
         sat = info_data['saturated'].reshape(10, int(nJobs/10)).sum(axis=1)
@@ -275,10 +275,9 @@ class resultManager():
 # outlierFilePath = self._writeSearchResult(freq, mean2F_th, nJobs, numTopList, stage, freqDerivOrder, cluster, workInLocalDir)
 # print('Finish writing search result for {0} Hz'.format(freq))
 # return outlierFilePath
-
-   
+ 
     # Workflow for writing search results across a frequency range (fmin, fmax)
-    def writeSearchResult(self, cohDay, freq, mean2F_th, numTopList=1000, stage='search', freqDerivOrder=2, cluster=False, workInLocalDir=False):
+    def writeSearchResult(self, cohDay, freq, mean2F_th, nJobs, numTopList=1000, stage='search', freqDerivOrder=2, cluster=False, workInLocalDir=False):
         """
         Parameters:
         - cohDay: int
@@ -309,9 +308,7 @@ class resultManager():
         # Write search results for the specified frequency
         outlierFilePath = self._writeSearchResult(cohDay, freq, mean2F_th, nJobs, numTopList, stage, freqDerivOrder, cluster, workInLocalDir)
         print('Finish writing search result for {0} Hz'.format(freq))
-        return outlierFilePath
-    
-    
+        return outlierFilePath 
     
     # Write results from each 1Hz frequency band of the search stage output
     def _writeSearchResultFromSaturatedBand(self, cohDay, freq, mean2F_th, jobIndex, numTopListLimit=1, stage='search', freqDerivOrder=2, workInLocalDir=False):
@@ -364,8 +361,8 @@ class resultManager():
             weave_data = fits.getdata(weaveFilePath, 1)
             spacing = utils.getSpacing(weaveFilePath, freqDerivOrder)
             # Generate outlier table for the job and assess if it reached the limit
-            outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th, numTopListLimit, freqDerivOrder)  
-            outlierTableList.append( outlier )
+            _outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th, numTopListLimit, freqDerivOrder)  
+            outlierTableList.append( _outlier )
            
         # Set up a FITS file with outliers, non-saturated bands, and search settings
         primary_hdu = fits.PrimaryHDU()
@@ -477,16 +474,16 @@ class resultManager():
             
             weave_data = fits.getdata(weaveFilePath, 1)
             spacing = utils.getSpacing(weaveFilePath, freqDerivOrder)
-            outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th, numTopListLimit, freqDerivOrder)  
+            _outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th, numTopListLimit, freqDerivOrder)  
             injParam = fits.getdata(weaveFilePath, 2)
-            outlier, injParam = self.makeInjectionTable(injParam, outlier, freqDerivOrder)
+            _outlier, injParam = self.makeInjectionTable(injParam, _outlier, freqDerivOrder)
             
-            if len(outlier) == 0:
-                outlierTableList.append( outlier )
+            if len(_outlier) == 0:
+                outlierTableList.append( _outlier )
             else:
-                outlierTableList.append( outlier )
+                outlierTableList.append( _outlier )
                 injTableList.append( injParam )
-            info_data[i] = freq, jobIndex, len(outlier)  
+            info_data[i] = freq, jobIndex, len(_outlier)  
 
         # append all tables in the file into one
         # Create a PrimaryHDU object
@@ -599,7 +596,7 @@ class resultManager():
 
     def _writeFollowUpResult(self, cohDay, freq, mean2F_th, nJobs, numTopListLimit=1000, stage='search', freqDerivOrder=2, 
                                    workInLocalDir=True, inj=False, cluster=False,
-                                   chunk_index=0, chunk_size=1, n_skygrid=1):
+                                   chunk_index=0, chunk_size=1):
         """
         Writes the follow-up results for injections at a given frequency.
 
@@ -657,37 +654,27 @@ class resultManager():
             
         # Iterate over each job to gather follow-up results
         for i, jobIndex in enumerate(range(chunk_index*chunk_size+1, chunk_index*chunk_size+nJobs+1)):
-
-            max_mean2F = -float('inf')  # Initialize to negative infinity for comparison
-            outlier, injParam = [], []
-
-            for j in range(n_skygrid if inj else 1):  # n_skygrid if inj=True, else 1
-                weaveFilePath = fp.weaveOutputFilePath(self.target, freq, taskName, j*nJobs+jobIndex, stage)
-                if workInLocalDir:
-                    weaveFilePath = Path(weaveFilePath).name 
-                # Create outlier table from the weave output
-                weave_data = fits.getdata(weaveFilePath, 1)
-                spacing = utils.getSpacing(weaveFilePath, freqDerivOrder)
-                _outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th[i], numTopListLimit, freqDerivOrder)
-                # If injections are considered, create an injection table as well
-                if inj:
-                    _injParam = fits.getdata(weaveFilePath, 2)
-                    _outlier, _injParam = self.makeInjectionTable(_injParam, _outlier, freqDerivOrder)
-
-                    if len(_outlier) > 0 and _outlier['mean2F'][0] > max_mean2F:
-                        outlier = _outlier
-                        injParam = _injParam
-                        max_mean2F = _outlier['mean2F'][0]
-
-                else:
-                    outlier = _outlier
-              
-            # Append results to the respective lists
-            outlierTableList.append( outlier )
+            weaveFilePath = fp.weaveOutputFilePath(self.target, freq, taskName, jobIndex, stage)
+            if workInLocalDir:
+                weaveFilePath = Path(weaveFilePath).name 
+            # Create outlier table from the weave output
+            weave_data = fits.getdata(weaveFilePath, 1)
+            spacing = utils.getSpacing(weaveFilePath, freqDerivOrder)
+            _outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th[i], numTopListLimit, freqDerivOrder)
+            # If injections are considered, create an injection table as well
             if inj:
-                injTableList.append( injParam )
+                injParam = fits.getdata(weaveFilePath, 2)
+                _outlier, injParam = self.makeInjectionTable(injParam, _outlier, freqDerivOrder)
+                
+            # Append results to the respective lists
+            if len(_outlier) == 0:
+                outlierTableList.append( _outlier )
+            else:
+                outlierTableList.append( _outlier )
+                if inj:
+                    injTableList.append( injParam )
                     
-            info_data[i] = freq, jobIndex, len(outlier)  
+            info_data[i] = freq, jobIndex, len(_outlier)  
 
         # append all tables in the file into one
         # Create a PrimaryHDU object
@@ -770,8 +757,7 @@ class resultManager():
     def writeFollowUpResult(self, new_cohDay, freq, old_mean2F, numTopList=1000, 
                             new_stage='followUp-1', new_freqDerivOrder=2, ratio=0, 
                             workInLocalDir=True, inj=False, cluster=False,
-                            chunk_index=0, chunk_size=1, chunk_count=None,
-                            n_skygrid=1):
+                            chunk_index=0, chunk_size=1, chunk_count=None):
         """
         Writes the follow-up result for a given frequency based on previous analysis.
 
@@ -811,8 +797,7 @@ class resultManager():
             mean2F_th = mean2F_th[chunk_index*chunk_size:(chunk_index+1)*chunk_size]
         nJobs = mean2F_th.size
         outlierFilePath = self._writeFollowUpResult(new_cohDay, freq, mean2F_th, nJobs, numTopList, new_stage, new_freqDerivOrder, 
-                                                    workInLocalDir, inj, cluster, chunk_index=chunk_index, chunk_size=chunk_size,
-                                                    n_skygrid=n_skygrid)
+                                                    workInLocalDir, inj, cluster, chunk_index=chunk_index, chunk_size=chunk_size)
 
         print('Finish writing followUp result for {0} Hz'.format(freq))
         return outlierFilePath
@@ -866,15 +851,15 @@ class resultManager():
         
         # Iterate through each chunk to gather outlier data
         for i in range(chunk_count):
-            outlierFilePath = outlierFilePath[:-4] + '_chunk{}.fts'.format(i)
+            _outlierFilePath = outlierFilePath[:-4] + '_chunk{}.fts'.format(i)
             if workInLocalDir:
-                outlierFilePath = Path(outlierFilePath).name
+                _outlierFilePath = Path(_outlierFilePath).name
 
-            outlierTableList.append( Table(fits.getdata(outlierFilePath, extname=stage+'_outlier')) )  
-            infoTableList.append( fits.getdata(outlierFilePath, extname='info') )
+            outlierTableList.append( Table(fits.getdata(_outlierFilePath, extname=stage+'_outlier')) )  
+            infoTableList.append( fits.getdata(_outlierFilePath, extname='info') )
 
         outlier_hdul = fits.HDUList()
-        primary_hdu = fits.getheader(outlierFilePath)
+        primary_hdu = fits.getheader(_outlierFilePath)
         outlier_hdu =  fits.BinTableHDU(data=vstack(outlierTableList), name=stage+'_outlier')
         outlier_hdul.append(outlier_hdu)
         info_hdu =  fits.BinTableHDU(data=np.hstack(infoTableList), name='info')
