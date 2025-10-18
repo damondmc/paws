@@ -90,7 +90,7 @@ def injectionJob(params, inj, sftFiles, metric, semiMM, cohMM, numTopList, extra
     print(result.stderr)
     return resultFile
 
-def determineEfficiency(sftFiles, setup, cohDay, obsDay, sp, inj_params, rm, target, taskName, freq, nInj, freqDerivOrder, stage, numTopList, extraStats, num_cpus, cluster, workInLocalDir, saveIntermediate=False, skyUncertainty=1e-5):
+def determineEfficiency(metric, sftFiles, setup, cohDay, obsDay, sp, inj_params, rm, target, taskName, freq, nInj, freqDerivOrder, stage, numTopList, extraStats, num_cpus, cluster, workInLocalDir, saveIntermediate=False, skyUncertainty=1e-5):
     
     #sp, ip = im._genParam(h0=h0est, freq=freq, nInj=nInj, injFreqDerivOrder=4, freqDerivOrder=freqDerivOrder, skyUncertainty=skyUncertainty, workInLocalDir=workInLocalDir, cluster=cluster)
 
@@ -104,9 +104,9 @@ def determineEfficiency(sftFiles, setup, cohDay, obsDay, sp, inj_params, rm, tar
     injResultFileList = [] 
     
     _, cohTime, nSeg, _, _ = utils.getTimeSetup(target.name, obsDay, cohDay)
-    metric = fp.weaveSetupFilePath(cohTime, nSeg, freqDerivOrder)
-    if workInLocalDir:  
-        metric = Path(metric).name
+    #metric = fp.weaveSetupFilePath(cohTime, nSeg, freqDerivOrder)
+    #if workInLocalDir:  
+    #    metric = Path(metric).name
 
     with Pool(processes=num_cpus) as pool:
         results = pool.starmap(injectionJob, [(params, inj, sftFiles, metric, setup.semiMM, setup.cohMM, numTopList, extraStats, target.alpha, target.delta, cohDay, freqDerivOrder, obsDay) for params, inj in zip(search_params, inj_params)])
