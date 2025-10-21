@@ -62,10 +62,11 @@ def skySampler(target_ra, target_dec, skyUncertainty, n_samples):
 
 
 class injectionParams:    
-    def __init__(self, target, obsDay, cohDay, fBand=0.1):
+    def __init__(self, target, obsDay, cohDay, refTime, fBand=0.1):
         self.target = target
         self.cohDay= cohDay
-        _, _, _, _, self.refTime = utils.getTimeSetup(self.target.name, obsDay, cohDay)
+        self.refTime = refTime 
+        #_, _, _, _, self.refTime = utils.getTimeSetup(self.target.name, obsDay, cohDay)
         self.fBand = fBand
         self.injParamName = utils.injParamName()
         

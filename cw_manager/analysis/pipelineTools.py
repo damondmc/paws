@@ -86,8 +86,8 @@ def injectionJob(params, inj, sftFiles, metric, semiMM, cohMM, numTopList, extra
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
 
     # Print the standard output and errors for debugging
-    print(result.stdout)
-    print(result.stderr)
+    #print(result.stdout)
+    #print(result.stderr)
     return resultFile
 
 def determineEfficiency(metric, sftFiles, setup, cohDay, obsDay, sp, inj_params, rm, target, taskName, freq, nInj, freqDerivOrder, stage, numTopList, extraStats, num_cpus, cluster, workInLocalDir, saveIntermediate=False, skyUncertainty=1e-5):
@@ -119,7 +119,7 @@ def determineEfficiency(metric, sftFiles, setup, cohDay, obsDay, sp, inj_params,
         outlierFilePath = Path(outlierFilePath).name
     mean2F_th = fits.getheader(outlierFilePath)['HIERARCH mean2F_th']
     
-    outlierFilePath = rm.writeInjectionResult1Hz(mean2F_th, nInj, cohDay, freq, numTopList=numTopList, stage=stage, freqDerivOrder=freqDerivOrder, cluster=cluster, workInLocalDir=workInLocalDir)
+    outlierFilePath = rm.writeInjectionResult(cohDay, freq, mean2F_th, nInj, numTopList=numTopList, stage=stage, freqDerivOrder=freqDerivOrder, cluster=cluster, workInLocalDir=workInLocalDir)
 
     if not saveIntermediate:
         # delete files to release disk storage
