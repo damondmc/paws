@@ -5,12 +5,11 @@ from matplotlib import colors
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.size"] = 20
 
-
 def normalize_array_with_nan(arr):
     """
     Normalizes a 2D array while ignoring NaN values.
     
-    Parameters:
+    Args:
     arr (np.ndarray): Input 2D array with shape (m, n)
     
     Returns:
@@ -26,13 +25,23 @@ def normalize_array_with_nan(arr):
     return normalized_arr
 
 def plot_spectrograms(det, timestamps, frequency, fourier_data, stat=None):
+    """
+    Plots spectrograms for given detector data.
+    Args:
+        det (str): Detector name (e.g., 'H1', 'L1')
+        timestamps (np.ndarray): Array of timestamps
+        frequency (np.ndarray): Array of frequency bins
+        fourier_data (np.ndarray): 2D array of Fourier amplitudes
+        stat (dict, optional): Dictionary containing statistics for annotations
+    Returns:
+        fig, axs: Matplotlib figure and axes objects
+    """
     fig, axs = plt.subplots(1, 1, figsize=(16, 10))
     axs = [axs]
     for ax in axs:
         ax.set(xlabel="Days", ylabel="Frequency [Hz]")
 
     time_in_days = (timestamps - timestamps[0]) / 86400
-    #axs[0].text(0.5, 0.5, "Preliminary", fontsize=70, color='grey', ha='center', va='center', rotation=45, transform=ax.transAxes)
 
     if stat is None:
         axs[0].set_title("{0} spectrogram".format(det))

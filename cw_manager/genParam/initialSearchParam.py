@@ -67,15 +67,11 @@ class initSearchParams:
                         f2min = 0.0
                         f2Band = f2max    # to mannually set f2dot lower limit to 0 (numerical accuracy/error exits)
                     
-                    
                     idx = i * nf1dots * nf2dots + j * nf2dots + k 
                     data[idx]['freq'], data[idx]['df'] = f0min, f0band
                     data[idx]['f1dot'], data[idx]['df1dot'] = f1min, f1Band
                     data[idx]['f2dot'], data[idx]['df2dot'] = f2min, f2Band
                     
-                    # sky location
-#                    data[idx]['alpha'], data[idx]['dalpha'] = self.target.alpha, self.target.dalpha
-#                    data[idx]['delta'], data[idx]['ddelta'] = self.target.delta, self.target.ddelta
         data = Table(data)
         data.add_column(self.alpha*np.ones(n), name='alpha')
         data.add_column(self.dalpha*np.ones(n), name='dalpha')

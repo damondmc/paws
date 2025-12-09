@@ -1,13 +1,11 @@
 #import utils.utils as utils
 import numpy as np
-#from ..utils import setup_parameter as setup
 import sys 
 
 def getNf1dot(freq, fBand, tau, df1dot=1.5e-9):
     _, _, bandwidth = f1BroadRange(freq, fBand, tau)
     n = bandwidth / df1dot
     return np.ceil(n).astype(int)
-
 
 def getNf2dot(freq, fBand, tau, df2dot=1.0e-19):
     f1min, f1max, _ = f1BroadRange(freq, fBand, tau)
@@ -52,7 +50,9 @@ def f4Value(f, f1, f2):
     f4 = nc*(3.*nc-1.)*(2.*nc-2.)*f1**4/f**3  
     return f4
 
-# In principle, f1dot should be <0 and f2dot should be >0. However, some outliers give positive f1dot and negative f2dot, we need to due with those case and the f3 function should return a reasonable range given the f1dot, f2dot input.
+# In principle, f1dot should be <0 and f2dot should be >0. 
+# However, some outliers give positive f1dot and negative f2dot, 
+# we need to due with those case and the f3 function should return a reasonable range given the f1dot, f2dot input.
 
 # manual defined f3/f4 broad search range 
 

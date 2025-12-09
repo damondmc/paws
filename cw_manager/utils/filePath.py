@@ -39,34 +39,22 @@ class PathManager:
         return self.config.get('executables', {}).get('weave', 
             '/cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_Weave')
     
-    @property
-    def estimate_upper_limit_executable(self):
-        return self.config.get('executables', {}).get('estimateULs',
-            '/cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_ComputeFstatMCUpperLimit')    
+    # @property
+    # def estimate_upper_limit_executable(self):
+    #     return self.config.get('executables', {}).get('estimateULs',
+    #         '/cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_ComputeFstatMCUpperLimit')    
 
-    @property
-    def follow_up_executable(self):
-        return self.home_dir / 'scripts' / 'followUp.py'
+    # @property
+    # def follow_up_executable(self):
+    #     return self.home_dir / 'scripts' / 'followUp.py'
 
-    @property
-    def upper_limit_executable(self):
-        return self.home_dir / 'scripts' / 'upperLimit.py'
-    
-    @property
-    def analyze_result_executable(self):
-        return self.home_dir / 'scripts' / 'analyze.py'
+    # @property
+    # def upper_limit_executable(self):
+    #     return self.home_dir / 'scripts' / 'upperLimit.py'
     
     # @property
-    # def image_file_path(self, osdf=False):
-    #     if osdf:
-    #         # Note: osdf:// is a protocol, not a standard filesystem path, so we return string
-    #         return 'osdf:///igwn/cit/staging/hoitim.cheung/images/cw_manager_galacticCenter.sif'
-    #     else:
-    #         return self.home_dir / 'cw_manager/cw_manager_galacticCenter.sif'
-
-    # ---------------------------------------------------------
-    # Input Data (SFTs)
-    # ---------------------------------------------------------
+    # def analyze_result_executable(self):
+    #     return self.home_dir / 'scripts' / 'analyze.py'
 
     def sft_file_path(self, freq, detector='H1', use_osdf=False):
         """
@@ -125,10 +113,7 @@ class PathManager:
     # ---------------------------------------------------------
 
     def weave_output_file(self, freq, task_name, job_index, stage):
-        """
-        Path where Weave writes the resulting FITS file.
-        Matches: /osdf/.../o4ab/results/...
-        """
+        """Path where Weave writes the resulting FITS file."""
         # Logic: OSDFDir + 'o4ab' + results structure
         base = self.osdf_dir / 'o4ab' / 'results' / stage / self.target_name / self.sft_source / str(freq) / 'Result'
         return base / f"{task_name}.fts.{job_index}"
@@ -145,6 +130,7 @@ class PathManager:
         return base / filename
 
     def outlier_from_saturated_file(self, freq, task_name, stage):
+        """Path for the loudest outlier from saturated bins file."""
         base = self.home_dir / 'results' / stage / self.target_name / self.sft_source / str(freq) / 'Outliers'
         return base / f"{task_name}_LoudestOutlierFromSaturated.fts"
 
