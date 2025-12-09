@@ -1,0 +1,17 @@
+# ==========================================
+# Target Parameters: Galactic Center
+# ==========================================
+
+name: GalacticCenter
+
+# Age in years
+age: 600 
+
+# Sky Position (Radians)
+alpha: 4.649850632788216   # RA
+delta: -0.5062820546075105 # DEC
+
+# Uncertainties / Search Region (Radians)
+dalpha: 0
+ddelta: 0
+radius: 0.0375             # Core radius

@@ -1,82 +1,117 @@
 from . import writeCondor as wc
-import numpy as np
 from pathlib import Path
-from ..utils import filePath as fp
-from ..utils import setup_parameter as setup
-from ..utils import utils as utils
+from ..utils import utils
+from ..utils.filePath import PathManager
 from tqdm import tqdm
 import time
 
 class condorManager:
-    def __init__(self, target, obsDay):
-        self.obsDay = obsDay
-        self.setup = setup
+    """
+    Class to manage condor DAG file creation for Weave searches.
+    """
+    def __init__(self, target, config):
+        """
+        Initialize the condorManager with target and configuration.
+        Args:
+            target (dict): Target object containing target information.
+            config (dict): Configuration dictionary with search parameters.
+        """
+        self.config = config
         self.target = target
+        # Initialize PathManager to handle all file paths
+        self.paths = PathManager(config, target)
     
-    def weaveArgs(self, freq, params, taskName, sftFiles, jobIndex, OSG=True):
-        exe = fp.weaveExecutableFilePath()
-        metric = fp.weaveSetupFilePath(self.cohTime, self.nSeg, self.freqDerivOrder)
+    def weaveArgs(self, freq, params, taskName, nSeg, sftFiles, jobIndex, OSG=True, metric='None'):
+        """
+        Generate the argument string for the Weave executable.
+        """
+        # Get the output path from PathManager
+        resultFile = self.paths.weave_output_file(freq, taskName, jobIndex, self.stage)
         
-        resultFile = fp.weaveOutputFilePath(self.target, freq, taskName, jobIndex, self.stage)
+        # Ensure the directory for the output file exists
+        # utils.makeDir expects a list of files/paths
         utils.makeDir([resultFile])
         
         extraStats = "coh2F_det,mean2F,coh2F_det,mean2F_det"
-        if self.nSeg != 1:
-            kwargs = {"semi-max-mismatch": self.setup.semiMM,
-                      "coh-max-mismatch": self.setup.cohMM,
-                      "toplist-limit": self.numTopList,
-                      "extra-statistics": extraStats}
-        else:
-            kwargs = {"semi-max-mismatch": self.setup.semiMM,
-                      "toplist-limit": self.numTopList,
-                      "extra-statistics": extraStats}
         
-        argList = ("")
+        # Determine arguments based on segments
+        # Note: self.numTopList is set in makeSearchDag
+        if nSeg != 1:
+            kwargs = {
+                "semi-max-mismatch": self.config['semiMM'],
+                "coh-max-mismatch": self.config['cohMM'],
+                "toplist-limit": self.numTopList,
+                "extra-statistics": extraStats
+            }
+        else:
+            kwargs = {
+                "semi-max-mismatch": self.config['semiMM'],
+                "toplist-limit": self.numTopList,
+                "extra-statistics": extraStats
+            }
+        
+        argList = ""
+        
         if not OSG:
-            argList+="argList= \"--output-file={0} ".format(resultFile)
-            argList+="--sft-files={0} ".format(';'.join([s for s in sftFiles]))
-            argList+="--setup-file={0} ".format(metric)
+            # --- Local Execution ---
+            argList += "argList= \"--output-file={0} ".format(resultFile)
+            argList += "--sft-files={0} ".format(';'.join([str(s) for s in sftFiles]))
+            argList += "--setup-file={0} ".format(metric)
             
             for key, value in kwargs.items():  
-                argList+="--{0}={1} ".format(key,value)
-            #argList+="--alpha={0}/{1} ".format(params['alpha'], params['dalpha'])
-            #argList+="--delta={0}/{1} ".format(params['delta'], params['ddelta'])
-            argList+="--alpha={0}/{1} ".format(params['alpha'], self.target.dalpha)
-            argList+="--delta={0}/{1} ".format(params['delta'], self.target.ddelta)
+                argList += "--{0}={1} ".format(key, value)
+            
+            argList += "--alpha={0}/{1} ".format(params['alpha'], self.target['dalpha'])
+            argList += "--delta={0}/{1} ".format(params['delta'], self.target['ddelta'])
         
-            for i in range(self.freqDerivOrder+1):
+            for i in range(self.freqDerivOrder + 1):      
                 key1, key2 = self.freqParamName[i], self.freqDerivParamName[i]
-                argList+="--{0}={1}/{2} ".format(key1, params[key1], params[key2])
-            argList+="\""
-        else: # using OSG computing resources (different format for .sub file)
-            argList+="OUTPUTFILE=\"{0}\" ".format(Path(resultFile).name)
-            argList+="REMAPOUTPUTFILE=\"{0}\" ".format(resultFile)
-            argList+="SETUPFILE=\"{0}\" ".format(Path(metric).name)
-            sft = ';'.join([Path(s).name for s in sftFiles])
-            argList+="SFTFILES=\"{0}\" ".format(sft)
-            inputFiles = ', '.join([s for s in sftFiles]) + ', ' + metric 
-            argList+="TRANSFERFILES=\"{0}\" ".format(inputFiles)
+                argList += "--{0}={1}/{2} ".format(key1, params[key1], params[key2])
+            argList += "\""
+            
+        else: 
+            # --- OSG/Grid Execution (File Transfer) ---
+            # Condor sees files in the current working directory after transfer
+            
+            # Use Path(x).name to get just the filename
+            argList += "OUTPUTFILE=\"{0}\" ".format(resultFile.name)
+            argList += "REMAPOUTPUTFILE=\"{0}\" ".format(resultFile)
+            argList += "SETUPFILE=\"{0}\" ".format(Path(metric).name)
+            
+            # For SFTs in OSG, we usually provide the list of transferred filenames
+            sft_names = ';'.join([Path(s).name for s in sftFiles])
+            argList += "SFTFILES=\"{0}\" ".format(sft_names)
+            
+            # Input files to be transferred (Comma separated list)
+            # Combine SFT paths and the metric file path
+            inputFiles = ', '.join([str(s) for s in sftFiles]) + ', ' + str(metric) 
+            argList += "TRANSFERFILES=\"{0}\" ".format(inputFiles)
             
             for key, value in kwargs.items():
-                argList+="{0}=\"{1}\" ".format(key.replace('-', '').upper(),value)        
-            #argList+="ALPHA=\"{0}\" DALPHA=\"{1}\" ".format(params['alpha'], params['dalpha'])
-            #argList+="DELTA=\"{0}\" DDELTA=\"{1}\" ".format(params['delta'], params['ddelta'])
-            argList+="ALPHA=\"{0}\" DALPHA=\"{1}\" ".format(params['alpha'], self.target.dalpha)
-            argList+="DELTA=\"{0}\" DDELTA=\"{1}\" ".format(params['delta'], self.target.ddelta)
-            for i in range(self.freqDerivOrder+1):
+                argList += "{0}=\"{1}\" ".format(key.replace('-', '').upper(), value)        
+            
+            argList += "ALPHA=\"{0}\" DALPHA=\"{1}\" ".format(params['alpha'], self.target['dalpha'])
+            argList += "DELTA=\"{0}\" DDELTA=\"{1}\" ".format(params['delta'], self.target['ddelta'])
+            
+            for i in range(self.freqDerivOrder + 1):
                 key1, key2 = self.freqParamName[i], self.freqDerivParamName[i]
-                argList+="{0}=\"{1}\" ".format(key1.upper(), params[key1])
-                argList+="{0}=\"{1}\" ".format(key2.upper(), params[key2])
+                argList += "{0}=\"{1}\" ".format(key1.upper(), params[key1])
+                argList += "{0}=\"{1}\" ".format(key2.upper(), params[key2])
+                
         return argList
         
-    def weaveArgStr(self): 
-        if self.nSeg != 1:
+    def weaveArgStr(self, nSeg): 
+        """
+        Generate the argument string template for the Weave executable.
+        """ 
+        if nSeg != 1:
             argStr = ["output-file", "sft-files", "setup-file", "semi-max-mismatch", "coh-max-mismatch", "toplist-limit", "extra-statistics"]
         else:
             argStr = ["output-file", "sft-files", "setup-file", "semi-max-mismatch", "toplist-limit", "extra-statistics"]
             
         argListString = ""
         for s in argStr:
+            # Weave expects arguments like --output-file=$(OUTPUTFILE)
             argListString += "--{0}=$({1}) ".format(s, s.replace('-', '').upper())
             
         argListString += "--alpha=$(ALPHA)/$(DALPHA) --delta=$(DELTA)/$(DDELTA) "
@@ -86,169 +121,83 @@ class condorManager:
         return argListString
     
     def writeSub(self, freq, taskName, crFiles, argStr, request_memory, OSG, OSDF):
-        exe = fp.weaveExecutableFilePath()
-        metric = fp.weaveSetupFilePath(self.cohTime, self.nSeg, self.freqDerivOrder)
-        # call function to write .sub files for search
-        subFileName = fp.condorSubFilePath(self.target, freq, taskName, self.stage)
+        """
+        Write the condor .sub file for the Weave executable.
+        """
+        # Get executable path from PathManager
+        exe = self.paths.weave_executable
+        
+        # Get submit file path
+        subFileName = self.paths.condor_sub_file(freq, taskName, self.stage)
+        
+        # Ensure parent dir exists and delete old file
+        Path(subFileName).parent.mkdir(parents=True, exist_ok=True)
         Path(subFileName).unlink(missing_ok=True)
-        wc.writeSearchSub(subFileName, exe, False, crFiles[0], crFiles[1], crFiles[2], argStr, request_memory=request_memory, request_disk='2GB', OSG=OSG, OSDF=OSDF)
+        
+        # Call writeCondor function (assumed to be correct)
+        # We pass strings, not Path objects, to be safe with external writer functions
+        wc.writeSearchSub(
+            str(subFileName), 
+            str(exe), 
+            False, 
+            str(crFiles[0]), 
+            str(crFiles[1]), 
+            str(crFiles[2]), 
+            argStr, 
+            request_memory=request_memory, 
+            request_disk='5GB', 
+            OSG=OSG, 
+            OSDF=OSDF
+        )
         return subFileName
     
-# to do: move to utils
-    def memoryUsage(self, stage):
-        if 'search' in stage:
-            if '1987'in self.target.name:
-                memory = '20GB'
-            else:
-                memory = '15GB'
-                
-        elif 'follow' in stage:
-            memory = '2GB'
-        else:
-            memory = '15GB'
-        return memory
-    
-    
-###### main use function
-
-    def makeSearchDag(self, cohDay, freq, param, numTopList, stage, freqDerivOrder, request_memory=None, OSG=False, OSDF=False):
+    def makeSearchDag(self, cohDay, freq, param, numTopList, stage, freqDerivOrder, nSeg,
+                      sftFiles, request_memory='18GB', OSG=False, OSDF=False, metric='None'):
+        """ 
+        Make condor DAG file for search stage.
+        """
         t0 = time.time()
+        
         if OSDF and not OSG:
-            print('Are you sure you want to read SFTs from OSDF but not using OSG computing resources?')
+            print('Warning: You are reading SFTs from OSDF but not using OSG computing resources.')
+
+        # Set instance variables used by weaveArgs
         self.freqParamName, self.freqDerivParamName = utils.phaseParamName(freqDerivOrder)
         self.freqDerivOrder = freqDerivOrder
         self.numTopList = numTopList
         self.stage = stage
-        self.cohDay, self.cohTime, self.nSeg, self.obsTime, self.refTime = utils.getTimeSetup(self.target.name, self.obsDay, cohDay)
         
-        if request_memory is None:
-            request_memory = self.memoryUsage(self.stage)
-        
-        # call function to write .sub files for search
-        taskName = utils.taskName(self.target, self.stage, self.cohDay, self.freqDerivOrder, freq)
-        sftFiles = utils.sftEnsemble(freq, self.obsDay, OSDF=OSDF)
+        # Generate task name
+        taskName = utils.taskName(self.target['name'], self.stage, cohDay, self.freqDerivOrder, freq)
                 
-        dagFileName = fp.dagFilePath(freq, self.target, taskName, self.stage)
-        Path(dagFileName).unlink(missing_ok=True)
-                    
-        crFiles = fp.condorRecordFilePath(freq, self.target, taskName, self.stage)
-        utils.makeDir(crFiles)
-
-        argStr = self.weaveArgStr()
-        subFileName = self.writeSub(freq, taskName, crFiles, argStr, request_memory=request_memory, OSG=OSG, OSDF=OSDF)
-        for jobIndex, params in enumerate(param, 1):
-            ######################## Argument string use to write to DAG  ########################
-            argList = self.weaveArgs(freq, params, taskName, sftFiles, jobIndex, OSG)
-            # Call function from WriteCondorFiles.py which will write DAG 
-            wc.writeSearchDag(dagFileName, taskName, subFileName, jobIndex, argList)
-
-        print('Finish writing {0} dag files for {1} Hz'.format(self.stage, freq))
-        print('Time used = {}s'.format(time.time()-t0))
-        return dagFileName
-
-
-    ############################ have to review
-    def analyzeResultArgStr(self): 
-        argStr = ["target", "obsDay", "cohDay", "stage", "freq", "freqDerivOrder", "numTopList", "df1dot", "cluster"]
-        argListString = ""
-        for s in argStr:
-            argListString += "--{0}=$({1}) ".format(s, s.replace('-', '').upper())
-
-        return argListString
-    
-    def analyzeResultArgs(self, fmin, fmax, df1dot, cluster, OSG): 
-        if OSG:
-            argListString = 'TARGET="{0}" OBSDAY="{1}" COHDAY="{2}" STAGE="{3}" FREQ="{4}" FREQDERIVORDER="{5}" TOPLISTLIMIT="{6}" df1dot="{7}" CLUSTER="{8}"'.format(
-                    self.target.name, self.obsDay, self.cohDay, self.stage, freq, self.freqDerivOrder, self.numTopList, df1dot, int(cluster))
-        else:
-            argListString = "argList=\" --targetList {0} --obsDay {1} --cohDay {2} --stage {3} --fmin {4} --fmax {5} --freqDerivOrder {6} --numTopList {7} --df1dot {8} --cluster {9}\"".format(
-                self.target.name, self.obsDay, self.cohDay, self.stage, fmin, fmax, self.freqDerivOrder, self.numTopList, df1dot, int(cluster))
-        return argListString
-    
-    def makeAnalyzeSearchDag(self, cohDay, freq, numTopList=1000, df1dot=1.5e-9, stage='search', freqDerivOrder=2, cluster=False):
-        self.freqParamName, self.freqDerivParamName = utils.phaseParamName(freqDerivOrder)
-        self.freqDerivOrder = freqDerivOrder
-        self.numTopList = numTopList
-        self.stage = stage
-        self.cohDay, self.cohTime, self.nSeg, self.obsTime, self.refTime = utils.getTimeSetup(self.target.name, self.obsDay, cohDay)
+        # Get DAG file path
+        dagFileName = self.paths.dag_file(freq, taskName, self.stage)
         
-        taskName = 'AnalyzeResult_{0}-{1}Hz'.format(fmin, fmax)
-        request_memory = '1GB'
-        argStr = self.analyzeResultArgStr()
-        exe = fp.analyzeResultExecutableFilePath()
-        subFileName = fp.condorSubFilePath(self.target, taskName, taskName, self.stage)
-        Path(subFileName).unlink(missing_ok=True)
-        
-        crFiles = fp.condorRecordFilePath(taskName, self.target, taskName, self.stage)
-        utils.makeDir(crFiles)
-        wc.writeSearchSub(subFileName, exe, True, crFiles[0], crFiles[1], crFiles[2], argStr, request_memory=request_memory, request_disk='1GB', OSG=False)
-        
-        dagFileName = fp.dagFilePath(taskName, self.target, taskName, self.stage)
-        Path(dagFileName).unlink(missing_ok=True)
-        for jobIndex, freq in tqdm(enumerate(range(fmin, fmax), 1)):
-            # call function to write .sub files for analyze result
-            ######################## Argument string use to write to DAG  ########################
-            argList = self.analyzeResultArgs(freq, freq+1, df1dot, cluster=cluster, OSG=False)
-            # Call function from WriteCondorFiles.py which will write DAG 
-            wc.writeSearchDag(dagFileName, taskName, subFileName, jobIndex, argList)
-        print('Finish writing {0} dag files for {1} Hz'.format(self.stage, freq))
-        return dagFileName
-
-    def injectionArgStr(self):
-        argStr = ["injections"]
-        
-        argListString = ""
-        for s in argStr:
-            argListString += "--{0}=$({1}) ".format(s, s.replace('-', '').upper())
-     
-        return argListString
-    
-    def injectionArg(self, colnames, injParam, OSG):
-        #injParamStr = ""
-        injParamStr = ";".join(["{0}={1}".format(col, injParam[col]) for col in colnames])
-        #for col in colnames:
-        #    injParamStr += "{0}={1};".format(col, injParam[col])
-        if OSG:
-            argList = ("INJECTIONS=\"{{{0}}}\"".format(injParamStr))
-        else:
-            argList = ("--injections={{{0}}}".format(injParamStr))
-        return argList
-    
-    def makeInjectionDag(self, cohDay, freq, param, injParam, numTopList=1000, stage='search', request_memory='2GB', freqDerivOrder=2, injFreqDerivOrder=4, OSG=False, OSDF=False):
-        if OSDF and not OSG:
-            print('Are you sure you want to read SFTs from OSDF but not using OSG computing resources?')
-        self.freqParamName, self.freqDerivParamName = utils.phaseParamName(freqDerivOrder)
-        self.freqDerivOrder = freqDerivOrder
-        self.numTopList = numTopList
-        self.stage = stage
-        self.cohDay, self.cohTime, self.nSeg, self.obsTime, self.refTime = utils.getTimeSetup(self.target.name, self.obsDay, cohDay)
-        injFreqParamName, _ = utils.phaseParamName(injFreqDerivOrder)
-        self.injParamName = utils.injParamName() + injFreqParamName[1:]
-   
-        # call function to write .sub files for search
-        taskName = utils.taskName(self.target, self.stage, self.cohDay, self.freqDerivOrder, freq)
-        sftFiles = utils.sftEnsemble(freq, self.obsDay, OSDF=OSDF)
-        
-        dagFileName = fp.dagFilePath(freq, self.target, taskName, self.stage)
+        # Clean up old DAG
+        Path(dagFileName).parent.mkdir(parents=True, exist_ok=True)
         Path(dagFileName).unlink(missing_ok=True)
         
-        crFiles = fp.condorRecordFilePath(freq, self.target, taskName, self.stage)
+        # Get Log paths [Out, Err, Log]
+        crFiles = self.paths.condor_record_files(freq, taskName, self.stage)
+        # Note: condor_record_files in updated PathManager already creates directories,
+        # but calling makeDir here is safe redundancy.
         utils.makeDir(crFiles)
 
-        argStr = self.weaveArgStr() + self.injectionArgStr()
+        # Generate Argument Template
+        argStr = self.weaveArgStr(nSeg)
+        
+        # Write .sub file
         subFileName = self.writeSub(freq, taskName, crFiles, argStr, request_memory=request_memory, OSG=OSG, OSDF=OSDF)
         
-        #injParamName = injParamList[str(freq)].columns.names
-        injParamName = self.injParamName
-        for jobIndex, (searchParam, injParam) in enumerate(zip(param, injParam), 1):
-            ######################## Argument string use to write to DAG  ########################
-            if not OSG:
-                argList = self.weaveArgs(freq, searchParam, taskName, sftFiles, jobIndex, OSG)[:-1]
-                argList += self.injectionArg(injParamName, injParam, OSG) + '\"'
-            else:
-                argList = self.weaveArgs(freq, searchParam, taskName, sftFiles, jobIndex, OSG) + self.injectionArg(injParamName, injParam, OSG)
-            # Call function from WriteCondorFiles.py which will write DAG 
-            wc.writeSearchDag(dagFileName, taskName, subFileName, jobIndex, argList)
+        # Loop over parameters to write jobs into DAG
+        for jobIndex, params in tqdm(enumerate(param, 1), total=param.size):
+            # Generate arguments for this specific job
+            argList = self.weaveArgs(freq, params, taskName, nSeg, sftFiles, jobIndex, OSG, metric=metric)
+            
+            # Write job entry to DAG
+            wc.writeSearchDag(str(dagFileName), taskName, str(subFileName), jobIndex, argList)
+
         print('Finish writing {0} dag files for {1} Hz'.format(self.stage, freq))
-        return dagFileName
+        print('Time used = {:.2f}s'.format(time.time()-t0))
         
+        return dagFileName

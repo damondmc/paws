@@ -1,128 +1,150 @@
+
 # This file contains all file path used in the Weave-based SNR search pipeline
-# Please put all file path in this file for better maintanace in the future
-from . import setup_parameter as setup
+from pathlib import Path
 
+class PathManager:
+    """
+    Centralized management of file paths for the Weave pipeline.
+    Replaces static functions and global 'setup' variables with a class
+    that derives paths from the loaded config and target YAML.
+    """
 
-############################################ Core file
-# path for Weave main program in igwn grid (OSG accessible)
-def weaveExecutableFilePath():
-    filePath = '/cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_Weave'
-    return filePath
-
-# path for python main program for the followUp process
-def followUpExecutableFilePath():
-    filePath = setup.homeDir + 'followUp.py'
-    return filePath
-
-# path for python main program for the injectionFollow process
-def injFollowUpExecutableFilePath():
-    filePath = setup.homeDir + 'followInjection.py'
-    return filePath
-
-# path for python main program for the upper limit determination process
-def upperLimitExecutableFilePath():
-    filePath = setup.homeDir + 'upperLimit.py'
-    return filePath
-
-# metric file for Weave 
-def weaveSetupFilePath(cohTime, nSeg, freqOrder):
-    filePath = setup.homeDir+'metricSetup/Start{0}_TCoh{1}_N{2}_Spin{3}.fts'.format(setup.startTime, cohTime, nSeg, freqOrder)
-    return filePath
-
-def analyzeResultExecutableFilePath():
-    filePath = setup.homeDir+'/scripts/new/analyze.py'
-    return filePath
-
-# sft files
-def sftFilePath(obsDay, freq, detector='H1', OSDF=False):
-    if OSDF:
-        rootDir = setup.OSDFDir + '/SFTs/o4a_data/'
-    else:
-        #rootDir = setup.homeDir
-        rootDir = '/home/'+setup.user+'/SFTs/o4a_data/'
+    def __init__(self, config, target):
+        """
+        Initialize with configuration dictionaries.
         
-    if detector == 'H1':
-        filePath = rootDir+'SFTs/narrowBand_age300yr/{0}days/H1/{1}/'.format(obsDay, int(freq))
-    elif detector == 'L1':
-        filePath = rootDir+'SFTs/narrowBand_age300yr/{0}days/L1/{1}/'.format(obsDay, int(freq))
-    return filePath
+        Args:
+            config (dict): The loaded config.yaml
+            target (dict): The loaded target.yaml (e.g., GalacticCenter.yaml)
+        """
+        self.config = config
+        self.target = target
+        
+        # Define Roots as Path objects for easy manipulation
+        self.home_dir = Path(config['homeDir'])
+        self.osdf_dir = Path(config['OSDFDir'])
+        
+        # Frequently used attributes
+        self.target_name = target['name']
+        self.sft_source = config['sftSource']
+        self.user = config['user']
 
-def estimateUpperLimitExcutable():
-    filePath = '/cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_ComputeFstatMCUpperLimit'
-    return filePath
+    # ---------------------------------------------------------
+    # Core Executables
+    # ---------------------------------------------------------
     
-############################################ Condor-related
-
-# file that store all dag filenames
-def dagGroupFilePath(target, fmin, fmax, stage):
-    filePath = setup.homeDir + 'dagJob/{0}_{1}_{2}-{3}Hz_dagFiles.txt'.format(target.name, stage, fmin, fmax)
-    return filePath
+    @property
+    def weave_executable(self):
+        # Prefer config definition, fallback to default if missing
+        return self.config.get('executables', {}).get('weave', 
+            '/cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_Weave')
     
-# dag file that store the variable to submit condor jobs
-def dagFilePath(freq, target, taskName, stage):
-    filePath = setup.homeDir + 'condorFiles/{0}/{1}/{2}/{3}.dag'.format(stage, target.name, freq, taskName) 
-    return filePath
+    @property
+    def estimate_upper_limit_executable(self):
+        return self.config.get('executables', {}).get('estimateULs',
+            '/cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_ComputeFstatMCUpperLimit')    
+
+    @property
+    def follow_up_executable(self):
+        return self.home_dir / 'scripts' / 'followUp.py'
+
+    @property
+    def upper_limit_executable(self):
+        return self.home_dir / 'scripts' / 'upperLimit.py'
     
-# path for condor submit file
-def condorSubFilePath(target, freq, taskName, stage):
-    filePath = setup.homeDir + 'condorFiles/{0}/{1}/{2}/{3}.sub'.format(stage, target.name, freq, taskName)
-    return filePath
-
-# path for condor to submit another DAG
-def SubmitCondorSubFilePath(target, freq, stage):
-    filePath = setup.homeDir + 'condorFiles/{0}/{1}/{2}/{3}.sub'.format(stage, target.name, freq, 'submit')
-    return filePath
-
-# condor job records 
-def condorRecordFilePath(freq, target, taskName, stage):
-    outputFile = setup.homeDir + 'results/{0}/{1}/{2}/{3}/OUT/{4}.out.$(JobID)'.format(stage, target.name, setup.sftSource, freq, taskName)
-    errorFile = setup.homeDir + 'results/{0}/{1}/{2}/{3}/ERR/{4}.err.$(JobID)'.format(stage, target.name, setup.sftSource, freq, taskName)
-    logFile = setup.homeDir + 'results/{0}/{1}/{2}/{3}/LOG/{4}_Log.txt.$(JobID)'.format(stage, target.name, setup.sftSource, freq, taskName)
-    return [outputFile, errorFile, logFile]
-
-############################################ Weave output file
-
-# path to save the Weave output
-def weaveOutputFilePath(target, freq, taskName, jobIndex, stage):
-    filePath = setup.homeDir + 'results/{0}/{1}/{2}/{3}/Result/{4}.fts.{5}'.format(stage, target.name, setup.sftSource, freq, taskName, jobIndex)
-    return filePath
+    @property
+    def analyze_result_executable(self):
+        return self.home_dir / 'scripts' / 'analyze.py'
     
-#  checkpoint file path for Weave
-def checkPointFilePath(target, freq, jobIndex, stage):
-    filePath = setup.homeDir + 'results/{0}/{1}/{2}/{3}/Result/Checkpoint.fts.{4}'.format(stage, target.name, setup.sftSource, freq, jobIndex)
-    return filePath
+    # @property
+    # def image_file_path(self, osdf=False):
+    #     if osdf:
+    #         # Note: osdf:// is a protocol, not a standard filesystem path, so we return string
+    #         return 'osdf:///igwn/cit/staging/hoitim.cheung/images/cw_manager_galacticCenter.sif'
+    #     else:
+    #         return self.home_dir / 'cw_manager/cw_manager_galacticCenter.sif'
 
-# file to save the outlier after analyzing the weave result file
-def outlierFilePath(target, freq, taskName, stage, cluster=False):
-    if not cluster:
-         filePath = setup.homeDir + 'results/{0}/{1}/{2}/{3}/Outliers/{4}_outlier.fts'.format(stage, target.name, setup.sftSource, freq, taskName)
-    else:
-         filePath = setup.homeDir + 'results/{0}/{1}/{2}/{3}/Outliers/{4}_outlier_clustered.fts'.format(stage, target.name, setup.sftSource, freq, taskName)
-    return filePath
+    # ---------------------------------------------------------
+    # Input Data (SFTs)
+    # ---------------------------------------------------------
 
-# file to save the outlier after analyzing the weave result file
-def outlierFromSaturatedFilePath(target, freq, taskName, stage):
-    filePath = setup.homeDir + 'results/{0}/{1}/{2}/{3}/Outliers/{4}_LoudestOutlierFromSaturated.fts'.format(stage, target.name, setup.sftSource, freq, taskName)
-    return filePath
+    def sft_file_path(self, freq, detector='H1', use_osdf=False):
+        """
+        Returns the DIRECTORY path containing SFTs for a specific frequency.
+        """
+        if use_osdf:
+            root = self.osdf_dir / 'SFTs' / 'o4ab_data' # Adjusted based on your snippet adding 'o4ab'
+        else:
+            # /home/user/SFTs/o4ab_data/
+            root = Path(f'/home/{self.user}/SFTs/o4ab_data')
 
-############################################ Estimate upper limit output file
-def estimateUpperLimitFilePath(target, freq, taskName, stage):
-    filePath = setup.homeDir + 'results/{0}/{1}/{2}_{3}Hz.txt'.format(stage, target.name, taskName, freq)
-    return filePath
+        # Construct: root / SFTs / H1 / 100
+        return root / 'SFTs' / detector / str(int(freq))
 
-############################################ Info & summary file 
-# file to save the the meta info of outlier after analyzing the weave result file (no. of outlier per sub-band)
-def outlierInfoFilePath(target, freq, taskName, stage, cluster=False):
-    if not cluster:
-        filePath = setup.homeDir + 'results/{0}/{1}/{2}/{3}/Outliers/{4}_info.txt'.format(stage, target.name, setup.sftSource, freq, taskName)
-    else:
-        filePath = setup.homeDir + 'results/{0}/{1}/{2}/{3}/Outliers/{4}_clustered_info.txt'.format(stage, target.name, setup.sftSource, freq, taskName)      
-    return filePath 
+    # ---------------------------------------------------------
+    # Condor & DAG Management
+    # ---------------------------------------------------------
 
-def imageFilePath(OSDF=False):
-    if OSDF:    
-        filePath = 'osdf:///igwn/cit/staging/hoitim.cheung/images/'
-    else:
-        filePath = '/home/hoitim.cheung/gc/cw_manager/'
-    filePath += 'cw_manager_gc.sif'
-    return filePath
+    def dag_group_file(self, fmin, fmax, stage):
+        """Path to the text file listing all DAGs for a band."""
+        filename = f"{self.target_name}_{stage}_{fmin}-{fmax}Hz_dagFiles.txt"
+        return self.home_dir / 'dagJob' / filename
+
+    def dag_file(self, freq, task_name, stage):
+        """Path to the specific .dag file."""
+        return self.home_dir / 'condorFiles' / stage / self.target_name / str(freq) / f"{task_name}.dag"
+
+    def condor_sub_file(self, freq, task_name, stage):
+        """Path to the .sub file."""
+        return self.home_dir / 'condorFiles' / stage / self.target_name / str(freq) / f"{task_name}.sub"
+
+    def submit_condor_sub_file(self, freq, stage):
+        """Path to the submit-wrapper .sub file."""
+        return self.home_dir / 'condorFiles' / stage / self.target_name / str(freq) / 'submit.sub'
+
+    def condor_record_files(self, freq, task_name, stage):
+        """
+        Returns a list [Output, Error, Log] for Condor logging.
+        Note: These contain $(JobID) or similar Condor variables, so they are returned as strings.
+        """
+        base_dir = self.home_dir / 'results' / stage / self.target_name / self.sft_source / str(freq)
+        
+        # Ensure parent log directories exist immediately (optional but recommended)
+        (base_dir / 'OUT').mkdir(parents=True, exist_ok=True)
+        (base_dir / 'ERR').mkdir(parents=True, exist_ok=True)
+        (base_dir / 'LOG').mkdir(parents=True, exist_ok=True)
+
+        out = base_dir / 'OUT' / f"{task_name}.out.$(JobID)"
+        err = base_dir / 'ERR' / f"{task_name}.err.$(JobID)"
+        log = base_dir / 'LOG' / f"{task_name}_Log.txt.$(JobID)"
+        
+        return [str(out), str(err), str(log)]
+
+    # ---------------------------------------------------------
+    # Weave Outputs 
+    # ---------------------------------------------------------
+
+    def weave_output_file(self, freq, task_name, job_index, stage):
+        """
+        Path where Weave writes the resulting FITS file.
+        Matches: /osdf/.../o4ab/results/...
+        """
+        # Logic: OSDFDir + 'o4ab' + results structure
+        base = self.osdf_dir / 'o4ab' / 'results' / stage / self.target_name / self.sft_source / str(freq) / 'Result'
+        return base / f"{task_name}.fts.{job_index}"
+
+    def outlier_file(self, freq, task_name, stage, cluster=False):
+        """Path for the analyzed outlier file."""
+        base = self.home_dir / 'results' / stage / self.target_name / self.sft_source / str(freq) / 'Outliers'
+        
+        if cluster:
+            filename = f"{task_name}_outlier_clustered.fts"
+        else:
+            filename = f"{task_name}_outlier.fts"
+            
+        return base / filename
+
+    def outlier_from_saturated_file(self, freq, task_name, stage):
+        base = self.home_dir / 'results' / stage / self.target_name / self.sft_source / str(freq) / 'Outliers'
+        return base / f"{task_name}_LoudestOutlierFromSaturated.fts"
+
