@@ -1,4 +1,3 @@
-#import utils.utils as utils
 import numpy as np
 import sys 
 
@@ -6,6 +5,7 @@ def getNf1dot(freq, fBand, tau, df1dot=1.5e-9):
     _, _, bandwidth = f1BroadRange(freq, fBand, tau)
     n = bandwidth / df1dot
     return np.ceil(n).astype(int)
+
 
 def getNf2dot(freq, fBand, tau, df2dot=1.0e-19):
     f1min, f1max, _ = f1BroadRange(freq, fBand, tau)
@@ -29,10 +29,6 @@ def f2BroadRange(f0, fBand, f1min, f1max, nc_min=2, nc_max=7):
     f2max = nc_max*np.maximum(f1min**2,f1max**2)/f0
     return f2min, f2max, f2max-f2min
 
-# f3/f4Value function is used only for inj parameter generation but not defining the followUp search range
-# so f1dot must be <0 and f2dot must be >0.
-
-# f3 should be < 0 
 def f3Value(f, f1, f2): 
     nc = f * f2/ f1**2
     nc = np.atleast_1d(nc)
@@ -41,7 +37,6 @@ def f3Value(f, f1, f2):
     f3 = nc*(2.*nc-1.)*f1**3/f**2  
     return f3
 
-# f4 should be >0
 def f4Value(f, f1, f2): 
     nc = f * f2/ f1**2
     nc = np.atleast_1d(nc)
@@ -50,14 +45,6 @@ def f4Value(f, f1, f2):
     f4 = nc*(3.*nc-1.)*(2.*nc-2.)*f1**4/f**3  
     return f4
 
-# In principle, f1dot should be <0 and f2dot should be >0. 
-# However, some outliers give positive f1dot and negative f2dot, 
-# we need to due with those case and the f3 function should return a reasonable range given the f1dot, f2dot input.
-
-# manual defined f3/f4 broad search range 
-
-# theoretical calculation
-# f3 < 0
 def f3BroadRange(f0, fBand, f1min, f1max, f2min, f2max, nc_min=2, nc_max=7):
     #nc_min = f0 * f2min / np.maximum(f1min**2, f1max**2)
     #nc_max = (f0+fBand) * f2max / np.minimum(f1min**2, f1max**2)

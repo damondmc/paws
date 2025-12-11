@@ -1,4 +1,4 @@
-from ..utils import utils as utils
+from ..definitions import phaseParamName
 from . import frequencyRange as fr
 from tqdm import tqdm
 import numpy as np
@@ -7,7 +7,7 @@ from astropy.table import Table
 
 class initSearchParams:    
     """
-    Generate initial search parameter table for a given target and frequency range.
+    Generate initial search parameter for a given age and sky location.
     The class divides the frequency derivative ranges into segments based on specified resolutions
     and constructs a parameter table for each frequency bin.
     """
@@ -25,7 +25,7 @@ class initSearchParams:
             Maximum braking index for frequency derivative calculations (default: 7).
         """
         self.fBand = fBand
-        self.freqParamName, self.freqDerivParamName = utils.phaseParamName(freqDerivOrder)
+        self.freqParamName, self.freqDerivParamName = phaseParamName(freqDerivOrder)
         self.nc_min = nc_min
         self.nc_max = nc_max
         
@@ -73,6 +73,8 @@ class initSearchParams:
                     data[idx]['f2dot'], data[idx]['df2dot'] = f2min, f2Band
                     
         data = Table(data)
+
+        # sky location
         data.add_column(self.alpha*np.ones(n), name='alpha')
         data.add_column(self.dalpha*np.ones(n), name='dalpha')
         data.add_column(self.delta*np.ones(n), name='delta')
@@ -80,29 +82,34 @@ class initSearchParams:
         return fits.BinTableHDU(data)
         
     # need to do, at search result stage, append the table.
-    def genParam(self, target, fmin, fmax, df1dot=1e-9, df2dot=1e-19):
+    def genParam(self, tau, alpha, dalpha, delta, ddelta, fmin, fmax, df1dot=1e-9, df2dot=1e-19):
         """
-        Generate initial search parameter tables for a given target and frequency range.
+        Generate initial search parametter for a given age and sky location.
         Parameters:
-        - target: dict
-            Dictionary containing target information including 'tau', 'alpha', 'dalpha', 'delta', 'ddelta'.
-        - fmin: int
-            Minimum frequency (Hz) of the search range.
-        - fmax: int
-            Maximum frequency (Hz) of the search range.
-        - df1dot: float
-            Resolution for f1dot (default: 1e-9 Hz/s).  
-        - df2dot: float
-            Resolution for f2dot (default: 1e-19 Hz/s^2).   
-        Returns:
-        - dict
-            A dictionary with frequency (as string) keys and corresponding FITS binary table HDUs as values.
+            - tau: float
+                Age of the pulsar (in years).
+            - alpha: float
+                Right ascension of the target pulsar (in radians).
+            - dalpha: float
+                Uncertainty in the right ascension (in radians).
+            - delta: float
+                Declination of the target pulsar (in radians).
+            - ddelta: float
+                Uncertainty in the declination (in radians).
+            - fmin: int
+                Minimum starting frequency (in Hz).
+            - fmax: int
+                Maximum starting frequency (in Hz).
+            - df1dot: float
+                Desired resolution for f1dot (default: 1e-9 Hz/s).
+            - df2dot: float
+                Desired resolution for f2dot (default: 1e-19 Hz/s).
         """
-        self.tau = target['age'] * 86400 * 365.25  # convert to seconds
-        self.alpha = target['alpha']
-        self.dalpha = target['dalpha']
-        self.delta = target['delta']
-        self.ddelta = target['ddelta']
+        self.tau = tau 
+        self.alpha = alpha
+        self.dalpha = dalpha
+        self.delta = delta
+        self.ddelta = ddelta
 
         params = {}
         for freq in tqdm(range(fmin, fmax)):
