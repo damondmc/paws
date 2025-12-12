@@ -1,7 +1,8 @@
 from . import writeCondor as wc
 from pathlib import Path
-from ..utils import utils
-from ..utils.filePath import PathManager
+from ..io import makeDir
+from ..definitions import phaseParamName
+from ..filePath import PathManager
 from tqdm import tqdm
 import time
 
@@ -21,16 +22,15 @@ class condorManager:
         # Initialize PathManager to handle all file paths
         self.paths = PathManager(config, target)
     
-    def weaveArgs(self, freq, params, taskName, nSeg, sftFiles, jobIndex, OSG=True, metric='None'):
+    def weaveArgs(self, freq, params, task_name, nSeg, sftFiles, jobIndex, OSG=True, metric='None'):
         """
         Generate the argument string for the Weave executable.
         """
         # Get the output path from PathManager
-        resultFile = self.paths.weave_output_file(freq, taskName, jobIndex, self.stage)
+        resultFile = self.paths.weave_output_file(freq, task_name, jobIndex, self.stage)
         
         # Ensure the directory for the output file exists
-        # utils.makeDir expects a list of files/paths
-        utils.makeDir([resultFile])
+        makeDir([resultFile])
         
         extraStats = "coh2F_det,mean2F,coh2F_det,mean2F_det"
         
@@ -120,39 +120,44 @@ class condorManager:
         
         return argListString
     
-    def writeSub(self, freq, taskName, crFiles, argStr, request_memory, OSG, OSDF):
+    def writeSub(self, freq, task_name, crFiles, argStr, request_memory, request_disk, request_cpu, 
+                 OSG, OSDF, exe=None, transfer_executable=False, image=None):
         """
         Write the condor .sub file for the Weave executable.
         """
         # Get executable path from PathManager
-        exe = self.paths.weave_executable
+        if exe is None:
+            exe = self.paths.weave_executable
         
         # Get submit file path
-        subFileName = self.paths.condor_sub_file(freq, taskName, self.stage)
+        subFileName = self.paths.condor_sub_file(freq, task_name, self.stage)
         
         # Ensure parent dir exists and delete old file
         Path(subFileName).parent.mkdir(parents=True, exist_ok=True)
         Path(subFileName).unlink(missing_ok=True)
         
-        # Call writeCondor function (assumed to be correct)
-        # We pass strings, not Path objects, to be safe with external writer functions
+        # Call writeCondor function to write the .sub file
         wc.writeSearchSub(
-            str(subFileName), 
-            str(exe), 
-            False, 
-            str(crFiles[0]), 
-            str(crFiles[1]), 
-            str(crFiles[2]), 
-            argStr, 
+            subFileName=str(subFileName), 
+            executablePath=str(exe), 
+            transfer_executable=transfer_executable, 
+            outputPath=str(crFiles[0]), 
+            errorPath=str(crFiles[1]), 
+            logPath=str(crFiles[2]), 
+            argListString=argStr, 
             request_memory=request_memory, 
-            request_disk='5GB', 
+            request_disk=request_disk, 
+            request_cpu=request_cpu,
             OSG=OSG, 
-            OSDF=OSDF
+            OSDF=OSDF,
+            image=image
         )
         return subFileName
     
-    def makeSearchDag(self, cohDay, freq, param, numTopList, stage, freqDerivOrder, nSeg,
-                      sftFiles, request_memory='18GB', OSG=False, OSDF=False, metric='None'):
+    def makeSearchDag(self, task_name, freq, param, numTopList, stage, freqDerivOrder, nSeg,
+                      sftFiles, request_memory='18GB', request_disk='5GB', request_cpu=1, 
+                      OSG=False, OSDF=False, metric='None',
+                      exe=None, image=None):
         """ 
         Make condor DAG file for search stage.
         """
@@ -162,40 +167,39 @@ class condorManager:
             print('Warning: You are reading SFTs from OSDF but not using OSG computing resources.')
 
         # Set instance variables used by weaveArgs
-        self.freqParamName, self.freqDerivParamName = utils.phaseParamName(freqDerivOrder)
+        self.freqParamName, self.freqDerivParamName = phaseParamName(freqDerivOrder)
         self.freqDerivOrder = freqDerivOrder
         self.numTopList = numTopList
         self.stage = stage
-        
-        # Generate task name
-        taskName = utils.taskName(self.target['name'], self.stage, cohDay, self.freqDerivOrder, freq)
                 
         # Get DAG file path
-        dagFileName = self.paths.dag_file(freq, taskName, self.stage)
+        dagFileName = self.paths.dag_file(freq, task_name, self.stage)
         
         # Clean up old DAG
         Path(dagFileName).parent.mkdir(parents=True, exist_ok=True)
         Path(dagFileName).unlink(missing_ok=True)
         
         # Get Log paths [Out, Err, Log]
-        crFiles = self.paths.condor_record_files(freq, taskName, self.stage)
+        crFiles = self.paths.condor_record_files(freq, task_name, self.stage)
         # Note: condor_record_files in updated PathManager already creates directories,
         # but calling makeDir here is safe redundancy.
-        utils.makeDir(crFiles)
+        makeDir(crFiles)
 
         # Generate Argument Template
         argStr = self.weaveArgStr(nSeg)
         
         # Write .sub file
-        subFileName = self.writeSub(freq, taskName, crFiles, argStr, request_memory=request_memory, OSG=OSG, OSDF=OSDF)
+        subFileName = self.writeSub(freq, task_name, crFiles, argStr, 
+                                    request_memory=request_memory, request_disk=request_disk, request_cpu=request_cpu,
+                                    OSG=OSG, OSDF=OSDF, exe=exe, image=image)
         
         # Loop over parameters to write jobs into DAG
         for jobIndex, params in tqdm(enumerate(param, 1), total=param.size):
             # Generate arguments for this specific job
-            argList = self.weaveArgs(freq, params, taskName, nSeg, sftFiles, jobIndex, OSG, metric=metric)
+            argList = self.weaveArgs(freq, params, task_name, nSeg, sftFiles, jobIndex, OSG, metric=metric)
             
             # Write job entry to DAG
-            wc.writeSearchDag(str(dagFileName), taskName, str(subFileName), jobIndex, argList)
+            wc.writeSearchDag(str(dagFileName), task_name, str(subFileName), jobIndex, argList)
 
         print('Finish writing {0} dag files for {1} Hz'.format(self.stage, freq))
         print('Time used = {:.2f}s'.format(time.time()-t0))
