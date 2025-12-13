@@ -4,7 +4,7 @@ from astropy.table import Table, vstack
 from scipy.stats.distributions import chi2
 
 
-def mean2F_threshold(nTemp, nSeg):
+def detection_stat_threshold(nTemp, nSeg):
     thresh =  chi2.ppf(1.0-(1.0/nTemp), 4*nSeg)/nSeg
     return thresh 
 

@@ -3,7 +3,7 @@ from tqdm import tqdm
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
-from . import frequencyRange as fr
+from . import frequency_range as fr
 from ..utils import setup_parameter as setup
                
 class followUpParams():    

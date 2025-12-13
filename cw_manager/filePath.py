@@ -81,6 +81,15 @@ class PathManager:
         # Construct: root / SFTs / H1 / 100
         return root / 'SFTs' / detector / str(int(freq))
 
+    def sftEnsemble(self, freq, use_osdf=False):
+        H1path = Path(self.sft_file_path(freq, detector='H1', use_osdf=use_osdf))
+        L1path = Path(self.sft_file_path(freq, detector='L1', use_osdf=use_osdf))
+        if not use_osdf:
+            lst = [str(s) for s in H1path.glob("*.sft")] + [str(s) for s in L1path.glob("*.sft")]
+        else:
+            lst = ['osdf://'+str(s)[5:] for s in H1path.glob("*.sft")] + ['osdf://'+str(s)[5:] for s in L1path.glob("*.sft")]     
+        return lst
+
     # ---------------------------------------------------------
     # Condor & DAG Management
     # ---------------------------------------------------------

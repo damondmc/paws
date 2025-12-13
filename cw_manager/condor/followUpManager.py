@@ -1,4 +1,4 @@
-from . import writeCondor as wc
+from . import writer as wc
 import numpy as np
 from pathlib import Path
 from ..utils import filePath as fp

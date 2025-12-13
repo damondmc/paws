@@ -3,21 +3,25 @@ from . import tools as tools
 from astropy.io import fits
 from astropy.table import Table, vstack
 import numpy as np
-from ..utils import filePath as fp
-from ..utils import setup_parameter as setup
-from ..genParam import frequencyRange as fr
+from ..filePath import PathManager
+from ..definitions import taskName
+from ..io import readTemplateCount
 from tqdm import tqdm
-from ..utils import utils as utils
 from pathlib import Path
-import warnings
     
 class resultManager():
-    def __init__(self, target, obsDay):
-        self.obsDay = obsDay
-        self.setup = setup
+    def __init__(self, target, config):
+        """
+        Initialize the resultManager.
+        Parameters:
+            target (dict): Target object containing target information.
+            config (dict): Configuration dictionary.
+        """
+        self.config = config
         self.target = target
         
-    # function to read template count from weave output in each 1Hz band
+        self.paths = PathManager(config, target)
+        
     def _readTemplateCount(self, cohDay, freq, nJobs, stage='search', freqDerivOrder=2):
         """
         Reads the template count from the weave output for each job in a specified frequency band.
@@ -25,16 +29,12 @@ class resultManager():
         Parameters:
         - cohDay: int
             The number of coherent observation days for the search.
-
         - freq: float
             The frequency in Hz for which the template count is being read.
-
         - nJobs: int
             The number of jobs that were processed.
-
         - stage: str, optional
             The current stage of the analysis (default is 'search').
-
         - freqDerivOrder: int, optional
             The order of the frequency derivative used in the analysis (default is 2).
 
@@ -43,11 +43,12 @@ class resultManager():
             A list of template counts read from the output files for each job.
         """
         templateList = []
-        taskName = utils.taskName(self.target, stage, cohDay, freqDerivOrder, freq)
-        crfiles = fp.condorRecordFilePath(freq, self.target, taskName, stage)
+        task_name = taskName(self.target['name'], stage, cohDay, freqDerivOrder) + f'{freq}_Hz'
+        crfiles = self.paths.condorRecordFilePath(freq, task_name, stage)
         for jobIndex in range(1, nJobs+1):
+            # omitting the last 8 characters '$(JobID)' to get the output file path
             outFilePath = crfiles[0][:-8] + '{0}'.format(jobIndex)
-            templateList.append(rf.readTemplateCount(outFilePath))
+            templateList.append(readTemplateCount(outFilePath))
         return templateList
         
     def calMean2F_threshold(self, cohDay, freq, nJobs, nSeg):

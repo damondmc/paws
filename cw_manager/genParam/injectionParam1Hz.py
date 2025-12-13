@@ -4,7 +4,7 @@ from astropy.io import fits
 import numpy as np
 from ..utils import setup_parameter as setup
 from astropy.io import fits
-from . import frequencyRange as fr
+from . import frequency_range as fr
 from ..analysis import readFile as rf
 from ..utils import filePath as fp
     
