@@ -1,10 +1,10 @@
 from pathlib import Path
 
-def writeSearchSub(subFileName, executablePath, transfer_executable, outputPath, 
-                   errorPath, logPath, argListString, 
+def writeSearchSub(filename, executable_path, transfer_executable, output_path, 
+                   error_path, log_path, arg_list_string, 
                    accounting_group, user, 
                    request_memory='15GB', request_disk='3GB', request_cpu=1, 
-                   OSG=True, OSDF=False, image=None):
+                   use_osg=False, use_osdf=False, image=None):
     """
     Writes the Condor submission (.sub) file.
 
@@ -26,9 +26,9 @@ def writeSearchSub(subFileName, executablePath, transfer_executable, outputPath,
         - image (str, optional): Path to Singularity image if required.
     """
     # Ensure directory exists
-    Path(Path(subFileName).resolve().parent).mkdir(parents=True, exist_ok=True)
+    Path(Path(filename).resolve().parent).mkdir(parents=True, exist_ok=True)
     
-    with open(subFileName, 'w') as subfile:
+    with open(filename, 'w') as subfile:
         subfile.write('universe = vanilla\n')
         subfile.write('notification = Never\n')
         subfile.write('request_memory = {0}\n'.format(request_memory)) 
@@ -42,19 +42,19 @@ def writeSearchSub(subFileName, executablePath, transfer_executable, outputPath,
         if image is not None:
             subfile.write('MY.SingularityImage = "{}"\n\n'.format(image))
             
-        subfile.write('output = {0}\n'.format(outputPath))
-        subfile.write('error = {0}\n'.format(errorPath))
-        subfile.write('log = {0}\n'.format(logPath))
+        subfile.write('output = {0}\n'.format(output_path))
+        subfile.write('error = {0}\n'.format(error_path))
+        subfile.write('log = {0}\n'.format(log_path))
         subfile.write('max_retries = {0}\n'.format(2)) # Retry if non-zero exit code
         subfile.write('periodic_release = (HoldReasonSubCode == 13)\n') # Release if transfer failed
-        subfile.write('executable = {0}\n'.format(executablePath))
+        subfile.write('executable = {0}\n'.format(executable_path))
 
-        if OSG == False: 
+        if use_osg == False: 
             # Local cluster execution
             subfile.write("arguments = $(argList)\n\n")   
         else: 
             # OSG Execution
-            subfile.write('arguments = {0}\n\n'.format(argListString))
+            subfile.write('arguments = {0}\n\n'.format(arg_list_string))
             subfile.write('stream_output = True\n')
             subfile.write('stream_error = True\n\n')
             subfile.write('should_transfer_files = YES\n')
@@ -64,13 +64,13 @@ def writeSearchSub(subFileName, executablePath, transfer_executable, outputPath,
             subfile.write('transfer_input_files = $(TRANSFERFILES)\n')
             subfile.write('transfer_output_files = $(OUTPUTFILE)\n')
             subfile.write('transfer_output_remaps = "$(OUTPUTFILE)=$(REMAPOUTPUTFILE)"\n\n')
-            if OSDF:
+            if use_osdf:
                 subfile.write('use_oauth_services = scitokens\n') 
             subfile.write('queue 1')
 
     return 0
 
-def writeSearchDag(dagFileName, jobName, subFileName, jobNum, argListString):
+def writeSearchDag(file_name, job_name, sub_file_name, job_num, arg_list_string):
     """
     Appends a JOB entry to the Condor DAG file.
 
@@ -81,9 +81,9 @@ def writeSearchDag(dagFileName, jobName, subFileName, jobNum, argListString):
         - jobNum (int): Index of the current job (used for JobID).
         - argListString (str): Arguments specific to this node (VARS).
     """
-    Path(Path(dagFileName).resolve().parent).mkdir(parents=True, exist_ok=True)
-    with open(dagFileName, 'a') as dagfile: # 'a' mode appends to the file
-        dagfile.write('JOB {0}_{1} {2}\n'.format(jobName, jobNum, subFileName))
-        dagfile.write('VARS {0}_{1} JobID="{1}" {2}'.format(jobName, jobNum, argListString))
+    Path(Path(file_name).resolve().parent).mkdir(parents=True, exist_ok=True)
+    with open(file_name, 'a') as dagfile: # 'a' mode appends to the file
+        dagfile.write('JOB {0}_{1} {2}\n'.format(job_name, job_num, sub_file_name))
+        dagfile.write('VARS {0}_{1} JobID="{1}" {2}'.format(job_name, job_num, arg_list_string))
         dagfile.write('\n')
     return 0
