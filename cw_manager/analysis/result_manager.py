@@ -176,13 +176,11 @@ class ResultManager:
         # 6. Identify Non-Saturated Bands
         sat = info_data['saturated'].reshape(int(1/self.config['fBand']), int(nJobs*self.config['fBand']))  
 
-        idx = []
-        for i in range(sat.shape[0]):
-            if np.any(sat[i, :] == numTopListLimit):
-                idx.append(i)
+        idx = np.where(sat.sum(axis=1) == 0)[0]
         nonSatBand = np.recarray((len(idx),), dtype=[(key, '>f8') for key in ['nonSatBand']])
         
-        nonSatBand['nonSatBand'] = freq + np.array(idx) * self.config['fBand']
+        if len(idx) > 0:
+            nonSatBand['nonSatBand'] = int(freq) + np.array(idx) * self.config['fBand']
            
         # 7. Create HDUs
         primary_hdu = fits.PrimaryHDU()
