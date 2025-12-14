@@ -1,17 +1,15 @@
-from . import writer as wc
 import numpy as np
 from pathlib import Path
-from ..utils import filePath as fp
-from ..utils import setup_parameter as setup
-from ..utils import utils as utils
 from tqdm import tqdm
-from astropy.io import fits
+
+from . import writer as wc
+from paws.io import make_dir
+from paws.filepaths import PathManager
 
 class followupManager:
-    def __init__(self, target, obsDay):
-        self.obsDay = obsDay
-        self.setup = setup
+    def __init__(self, target, config):
         self.target = target
+        self.config = config
     
     def followUpArgs(self, h0, cohDay, freq, stage, freqDerivOrder, numTopList, sftFiles, request_cpu, real, inj, cluster, workInLocalDir): 
         argListString = '--target {0} --obsDay {1} --cohDay {2} --freq {3} --stage {4} --freqDerivOrder {5} --numTopList {6} --sftFiles {7} --num_cpus {8} --h0 {9}'.format(
@@ -29,11 +27,11 @@ class followupManager:
 
     def transferFileArgs(self, exe, configFile, cohDay, freq, freqDerivOrder, stage, sftFiles, old_stage='search', cluster=False, OSG=True, OSDF=False, fromSaturatedBand=False):       
     
-        taskName = utils.taskName(self.target, old_stage, cohDay, freqDerivOrder, freq)
+        taskname = task_name(self.target, old_stage, cohDay, freqDerivOrder, freq)
         if not fromSaturatedBand:
-            searchResultFile = fp.outlierFilePath(self.target, freq, taskName, old_stage, cluster=cluster) 
+            searchResultFile = fp.outlierFilePath(self.target, freq, taskname, old_stage, cluster=cluster) 
         else:
-            searchResultFile = fp.outlierFromSaturatedFilePath(self.target, freq, taskName, old_stage)
+            searchResultFile = fp.outlierFromSaturatedFilePath(self.target, freq, taskname, old_stage)
         #exe = fp.followUpExecutableFilePath()
         image = fp.imageFilePath(OSDF)
         inputFiles = "{}, {}, {}".format(exe, image, searchResultFile)
@@ -51,9 +49,9 @@ class followupManager:
             metric = fp.weaveSetupFilePath(cohTime, nSeg, _freqDerivOrder)
             inputFiles += ", {}".format(metric)
         # using OSG computing resources (different format for .sub file)
-        taskName = utils.taskName(self.target, stage, cohDay, freqDerivOrder, freq)
-        outlierFilePath = fp.outlierFilePath(self.target, freq, taskName, stage, cluster=cluster) 
-        utils.makeDir([outlierFilePath])
+        taskname = task_name(self.target, stage, cohDay, freqDerivOrder, freq)
+        outlierFilePath = fp.outlierFilePath(self.target, freq, taskname, stage, cluster=cluster) 
+        make_dir([outlierFilePath])
         argList="OUTPUTFILE=\"{0}\" REMAPOUTPUTFILE=\"{1}\" TRANSFERFILES=\"{2}\" ".format(
             Path(outlierFilePath).name, outlierFilePath, inputFiles)
         return argList
@@ -65,19 +63,19 @@ class followupManager:
             cohDay = int(cohDay)
         freqDerivOrder = int(freqDerivOrder)
         
-        taskName = utils.taskName(self.target, stage, cohDay, freqDerivOrder, str(fmin)+'-'+str(fmax)) 
-        dagFileName = fp.dagFilePath('', self.target, taskName, stage)
+        taskname = task_name(self.target, stage, cohDay, freqDerivOrder, str(fmin)+'-'+str(fmax)) 
+        dagFileName = fp.dagFilePath('', self.target, taskname, stage)
         Path(dagFileName).unlink(missing_ok=True)
         
         for jobIndex, freq in tqdm(enumerate(range(fmin, fmax), 1)):
-            taskName = utils.taskName(self.target, stage, cohDay, freqDerivOrder, freq)
+            taskname = task_name(self.target, stage, cohDay, freqDerivOrder, freq)
             exe = fp.followUpExecutableFilePath()
             local_exe = Path(exe).name
-            subFileName = fp.condorSubFilePath(self.target, freq, taskName, stage)
+            subFileName = fp.condorSubFilePath(self.target, freq, taskname, stage)
             Path(subFileName).unlink(missing_ok=True)
             
-            crFiles = fp.condorRecordFilePath(freq, self.target, taskName, stage)
-            utils.makeDir(crFiles)
+            crFiles = fp.condorRecordFilePath(freq, self.target, taskname, stage)
+            make_dir(crFiles)
             
             image = fp.imageFilePath(OSDF)
             image = Path(image).name
@@ -91,6 +89,6 @@ class followupManager:
             argList = self.transferFileArgs(exe, configFile, cohDay, freq, freqDerivOrder, stage, sftFiles, old_stage, cluster, OSG, OSDF, fromSaturatedBand)
                              
             # Call function from WriteCondorFiles.py which will write DAG 
-            wc.writeSearchDag(dagFileName, taskName, subFileName, jobIndex, argList)
+            wc.writeSearchDag(dagFileName, taskname, subFileName, jobIndex, argList)
         print('Finish writing follow-up dag from {0} stage for {1}-{2}Hz'.format(stage, fmin, fmax))
 

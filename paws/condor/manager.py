@@ -3,9 +3,9 @@ import time
 from tqdm import tqdm
 
 from . import writer as wc
-from ..io import make_dir
-from ..definitions import phase_param_name
-from ..filepaths import PathManager
+from paws.io import make_dir
+from paws.definitions import phase_param_name
+from paws.filepaths import PathManager
 
 class CondorManager:
     """
@@ -54,7 +54,7 @@ class CondorManager:
             error_path=str(cr_files[1]), 
             log_path=str(cr_files[2]), 
             arg_list_string=arg_str,
-            accounting_group=self.config['accGroup'],
+            accounting_group=self.config['acc_group'],
             user=self.config['user'],
             request_memory=request_memory, 
             request_disk=request_disk, 
@@ -179,7 +179,7 @@ class CondorManager:
             print('Warning: You are reading SFTs from OSDF but not using OSG computing resources.')
 
         # Initialize state for this run
-        self.freq_param_names, self.freq_deriv_param_names = phaseParamName(freq_deriv_order)
+        self.freq_param_names, self.freq_deriv_param_names = phase_param_name(freq_deriv_order)
         self.num_top_list = num_top_list
             
         dag_file_path = self.paths.dag_file(freq, task_name, stage)
@@ -187,7 +187,7 @@ class CondorManager:
         dag_file_path.unlink(missing_ok=True)
         
         cr_files = self.paths.condor_record_files(freq, task_name, stage)
-        makeDir(cr_files)
+        make_dir(cr_files)
 
         # Create SUB file
         arg_template = self.get_weave_arg_template(n_seg)
