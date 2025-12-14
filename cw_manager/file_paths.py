@@ -1,4 +1,3 @@
-
 # This file contains all file path used in the Weave-based SNR search pipeline
 from pathlib import Path
 
@@ -56,14 +55,6 @@ class PathManager:
     def analyze_result_executable(self):
         return self.home_dir / 'scripts/analyze.py'
 
-    # @property
-    # def image_file_path(self, osdf=False):
-    #     if osdf:
-    #         # Note: osdf:// is a protocol, not a standard filesystem path, so we return string
-    #         return 'osdf:///igwn/cit/staging/hoitim.cheung/images/cw_manager_galacticCenter.sif'
-    #     else:
-    #         return self.home_dir / 'cw_manager/cw_manager_galacticCenter.sif'
-
     # ---------------------------------------------------------
     # Input Data (SFTs)
     # ---------------------------------------------------------
@@ -81,22 +72,28 @@ class PathManager:
         # Construct: root / SFTs / H1 / 100
         return root / 'SFTs' / detector / str(int(freq))
 
-    def sftEnsemble(self, freq, use_osdf=False):
-        H1path = Path(self.sft_file_path(freq, detector='H1', use_osdf=use_osdf))
-        L1path = Path(self.sft_file_path(freq, detector='L1', use_osdf=use_osdf))
+    def sft_ensemble(self, freq, use_osdf=False):
+        """
+        Returns a list of SFT file paths for H1 and L1 detectors.
+        """
+        h1_path = Path(self.sft_file_path(freq, detector='H1', use_osdf=use_osdf))
+        l1_path = Path(self.sft_file_path(freq, detector='L1', use_osdf=use_osdf))
+        
         if not use_osdf:
-            lst = [str(s) for s in H1path.glob("*.sft")] + [str(s) for s in L1path.glob("*.sft")]
+            sft_list = [str(s) for s in h1_path.glob("*.sft")] + [str(s) for s in l1_path.glob("*.sft")]
         else:
-            lst = ['osdf://'+str(s)[5:] for s in H1path.glob("*.sft")] + ['osdf://'+str(s)[5:] for s in L1path.glob("*.sft")]     
-        return lst
+            # Assumes osdf path logic where slicing [5:] removes the local mount prefix
+            sft_list = ['osdf://' + str(s)[5:] for s in h1_path.glob("*.sft")] + \
+                       ['osdf://' + str(s)[5:] for s in l1_path.glob("*.sft")]     
+        return sft_list
 
     # ---------------------------------------------------------
     # Condor & DAG Management
     # ---------------------------------------------------------
 
-    def dag_group_file(self, fmin, fmax, stage):
+    def dag_group_file(self, f_min, f_max, stage):
         """Path to the text file listing all DAGs for a band."""
-        filename = f"{self.target_name}_{stage}_{fmin}-{fmax}Hz_dagFiles.txt"
+        filename = f"{self.target_name}_{stage}_{f_min}-{f_max}Hz_dagFiles.txt"
         return self.home_dir / 'dagJob' / filename
 
     def dag_file(self, freq, task_name, stage):
@@ -106,6 +103,7 @@ class PathManager:
     def condor_sub_file(self, freq, task_name, stage):
         """Path to the .sub file."""
         return self.home_dir / 'condorFiles' / stage / self.target_name / str(freq) / f"{task_name}_{freq}Hz.sub"
+    
     def submit_condor_sub_file(self, freq, stage):
         """Path to the submit-wrapper .sub file."""
         return self.home_dir / 'condorFiles' / stage / self.target_name / str(freq) / 'submit.sub'
@@ -155,4 +153,3 @@ class PathManager:
     def outlier_from_saturated_file(self, freq, task_name, stage):
         base = self.home_dir / 'results' / stage / self.target_name / self.sft_source / str(freq) / 'Outliers'
         return base / f"{task_name}_{freq}Hz_LoudestOutlierFromSaturated.fts"
-

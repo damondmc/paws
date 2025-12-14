@@ -1,4 +1,4 @@
-def phaseParamName(order):
+def phase_param_name(order):
     """
     Returns parameter names based on derivative order.
     """
@@ -6,10 +6,10 @@ def phaseParamName(order):
     freqDerivParamName = ["df", "df1dot", "df2dot", "df3dot", "df4dot"]        
     return freqParamName[:order+1], freqDerivParamName[:order+1]
 
-def injParamName():
+def inj_param_name():
     return ["Alpha", "Delta", "refTime", "aPlus", "aCross", "psi", "Freq"]
 
-def taskName(target_name, stage, cohDay, order):
+def task_name(target_name, stage, cohDay, order):
     """
     Standardized task naming convention.
     """

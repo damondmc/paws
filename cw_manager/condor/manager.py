@@ -1,5 +1,5 @@
 from . import writer as wc
-from cw_manager.io import makeDir
+from cw_manager.cw_manager._io import makeDir
 from cw_manager.definitions import phaseParamName
 from cw_manager.filePath import PathManager
 

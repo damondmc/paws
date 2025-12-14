@@ -5,7 +5,7 @@ from astropy.table import Table, vstack
 import numpy as np
 from ..filePath import PathManager
 from ..definitions import taskName
-from ..io import readTemplateCount
+from .._io import readTemplateCount
 from tqdm import tqdm
 from pathlib import Path
     

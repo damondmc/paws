@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ..filePath import PathManager
 from ..definitions import taskName, phaseParamName
-from ..io import readTemplateCount, makeDir, getSpacing  
+from .._io import readTemplateCount, makeDir, getSpacing  
 from . import tools
 from .clustering import clustering  
 

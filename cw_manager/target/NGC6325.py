@@ -1,9 +1,0 @@
-name = 'NGC6325'
-tau = 300*365*86400 # characteristic age 
-alpha = 4.5290719585040735 # RA in radian 
-delta = -0.4147949500289723 # DEC in radian 
-dalpha = 0 # in radian 
-ddelta = 0 # in radian 
-rc = 8.726646259971647e-06 # core radius in radian 
-rh = 0.00018325957145940458 # half-light radius in radian 
-rt = 0.00010631231535930015 # tidal radius in radian 
