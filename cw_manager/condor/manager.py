@@ -241,148 +241,148 @@ class CondorManager:
         print('Time used = {:.2f}s'.format(time.time()-t0))
         return dagFileName
     
-##################################################################################################################################################################
+# ##################################################################################################################################################################
 
 
-    def upperLimitArgStr(self, nSeg): 
-        """
-        Generate the argument string template for the Weave executable.
-        Parameters:
-            nSeg (int): Number of segments in the search.
-        Returns:
-            argListString (str): Argument string template.
-        """
-        if nSeg != 1:
-            argStr = ["output-file", 
-                      "sft-files", "setup-file", 
-                      "semi-max-mismatch", "coh-max-mismatch",
-                      "toplist-limit", "extra-statistics"]
-        else:
-            argStr = ["output-file", 
-                      "sft-files", "setup-file", 
-                      "semi-max-mismatch", 
-                      "toplist-limit", "extra-statistics"]
+#     def upperLimitArgStr(self, nSeg): 
+#         """
+#         Generate the argument string template for the Weave executable.
+#         Parameters:
+#             nSeg (int): Number of segments in the search.
+#         Returns:
+#             argListString (str): Argument string template.
+#         """
+#         if nSeg != 1:
+#             argStr = ["output-file", 
+#                       "sft-files", "setup-file", 
+#                       "semi-max-mismatch", "coh-max-mismatch",
+#                       "toplist-limit", "extra-statistics"]
+#         else:
+#             argStr = ["output-file", 
+#                       "sft-files", "setup-file", 
+#                       "semi-max-mismatch", 
+#                       "toplist-limit", "extra-statistics"]
             
-        argListString = ""
-        for s in argStr:
-            argListString += "--{0}=$({1}) ".format(s, s.replace('-', '').upper())
+#         argListString = ""
+#         for s in argStr:
+#             argListString += "--{0}=$({1}) ".format(s, s.replace('-', '').upper())
             
-        argListString += "--alpha=$(ALPHA)/$(DALPHA) --delta=$(DELTA)/$(DDELTA) "
-        for key1, key2 in zip(self.freqParamName, self.freqDerivParamName):
-            argListString += "--{0}=$({1})/$({2}) ".format(key1, key1.upper(), key2.upper())
+#         argListString += "--alpha=$(ALPHA)/$(DALPHA) --delta=$(DELTA)/$(DDELTA) "
+#         for key1, key2 in zip(self.freqParamName, self.freqDerivParamName):
+#             argListString += "--{0}=$({1})/$({2}) ".format(key1, key1.upper(), key2.upper())
         
 
 
-        return argListString
+#         return argListString
 
 
-    def upperLimitArgs(self, freq, stage, mean2F_th, task_name, nSeg, sftFiles, jobIndex, metric, 
-                       sftFiles, nInj, skyUncertainty, h0est, num_cpus, cluster, workInLocalDir, OSDF, OSG):
-        """
-        Internal helper: Generates argument strings for Upper Limit jobs.
-        Parameters:
-            freq (int): Frequency of the search.
-            stage (str): Stage of the search.
-            mean2F_th (float): Mean 2F threshold.
-            task_name (str): Name of the task.
-            nSeg (int): Number of segments in the search.
-            sftFiles (list): List of SFT files used in the search.
-            jobIndex (int): Index of the job.
-            metric (str): Path to the metric file.
-            nInj (int): Number of injections.
-            skyUncertainty (float): Sky uncertainty value.
-            h0est (float): Estimated h0 value.
-            num_cpus (int): Number of CPUs requested.
-            cluster (bool): Whether running on a cluster.
-            workInLocalDir (bool): Whether working in local   
-            OSDF (bool): Whether to use OSDF SFTs.
-            OSG (bool): Whether to use OSG resources.  
-        Returns:
-            pyArgString/osgArgString (str): Argument string for the Upper Limit job.            
-        """
-        # 1. Base Python Arguments (used for Local execution or inside the OSG wrapper)
-        if workInLocalDir:
-            metric_str = Path(metric).name
-        else:
-            metric_str = metric
+#     def upperLimitArgs(self, freq, stage, mean2F_th, task_name, nSeg, sftFiles, jobIndex, metric, 
+#                        sftFiles, nInj, skyUncertainty, h0est, num_cpus, cluster, workInLocalDir, OSDF, OSG):
+#         """
+#         Internal helper: Generates argument strings for Upper Limit jobs.
+#         Parameters:
+#             freq (int): Frequency of the search.
+#             stage (str): Stage of the search.
+#             mean2F_th (float): Mean 2F threshold.
+#             task_name (str): Name of the task.
+#             nSeg (int): Number of segments in the search.
+#             sftFiles (list): List of SFT files used in the search.
+#             jobIndex (int): Index of the job.
+#             metric (str): Path to the metric file.
+#             nInj (int): Number of injections.
+#             skyUncertainty (float): Sky uncertainty value.
+#             h0est (float): Estimated h0 value.
+#             num_cpus (int): Number of CPUs requested.
+#             cluster (bool): Whether running on a cluster.
+#             workInLocalDir (bool): Whether working in local   
+#             OSDF (bool): Whether to use OSDF SFTs.
+#             OSG (bool): Whether to use OSG resources.  
+#         Returns:
+#             pyArgString/osgArgString (str): Argument string for the Upper Limit job.            
+#         """
+#         # 1. Base Python Arguments (used for Local execution or inside the OSG wrapper)
+#         if workInLocalDir:
+#             metric_str = Path(metric).name
+#         else:
+#             metric_str = metric
 
-        sft_str = ';'.join([Path(s).name for s in sftFiles])
+#         sft_str = ';'.join([Path(s).name for s in sftFiles])
         
-        pyArgString = f'--target {self.target["name"]} --cohDay {cohDay} --freq {freq} --stage {stage} \
-                        --freqDerivOrder {freqDerivOrder} --numTopList {numTopList} --nInj {nInj} --sftFiles {sft_str} \
-                        --num_cpus {num_cpus} --skyUncertainty {skyUncertainty} --h0est {h0est} --metric {metric_str}'
+#         pyArgString = f'--target {self.target["name"]} --cohDay {cohDay} --freq {freq} --stage {stage} \
+#                         --freqDerivOrder {freqDerivOrder} --numTopList {numTopList} --nInj {nInj} --sftFiles {sft_str} \
+#                         --num_cpus {num_cpus} --skyUncertainty {skyUncertainty} --h0est {h0est} --metric {metric_str}'
         
-        if cluster:
-            pyArgString += " --cluster"
-        if workInLocalDir:
-            pyArgString += " --workInLocalDir"
-        if OSDF:
-            pyArgString += " --OSDF"
+#         if cluster:
+#             pyArgString += " --cluster"
+#         if workInLocalDir:
+#             pyArgString += " --workInLocalDir"
+#         if OSDF:
+#             pyArgString += " --OSDF"
 
-        # 2. Return based on execution mode
-        if not OSG:
-            # For local execution, the ARG list IS the python command line
-            return pyArgString
-        else:
-            curr_taskName = taskName(self.target['name'], stage, cohDay, freqDerivOrder, freq)
-            outputFile = self.paths.outlier_file(freq, curr_taskName, stage, cluster=cluster)
+#         # 2. Return based on execution mode
+#         if not OSG:
+#             # For local execution, the ARG list IS the python command line
+#             return pyArgString
+#         else:
+#             curr_taskName = taskName(self.target['name'], stage, cohDay, freqDerivOrder, freq)
+#             outputFile = self.paths.outlier_file(freq, curr_taskName, stage, cluster=cluster)
             
-            # Construct Transfer List
-            exe = self.paths.upper_limit_executable
-            image = self.paths.singularity_image
+#             # Construct Transfer List
+#             exe = self.paths.upper_limit_executable
+#             image = self.paths.singularity_image
             
-            # Build comma-separated list of input files
-            # Note: OSG usually requires the full path for transfer
-            inputFiles = [str(exe), str(image), str(searchResultFile), str(metric)]
-            inputFiles.extend([str(s) for s in sftFiles])
-            inputFiles_str = ', '.join(inputFiles)
+#             # Build comma-separated list of input files
+#             # Note: OSG usually requires the full path for transfer
+#             inputFiles = [str(exe), str(image), str(searchResultFile), str(metric)]
+#             inputFiles.extend([str(s) for s in sftFiles])
+#             inputFiles_str = ', '.join(inputFiles)
 
-            # OSG Argument String (VARS format)
+#             # OSG Argument String (VARS format)
             
-            osgArgString = "OUTPUTFILE=\"{0}\" REMAPOUTPUTFILE=\"{1}\" TRANSFERFILES=\"{2}\" ".format(
-                Path(outputFile).name, outputFile, inputFiles_str)
+#             osgArgString = "OUTPUTFILE=\"{0}\" REMAPOUTPUTFILE=\"{1}\" TRANSFERFILES=\"{2}\" ".format(
+#                 Path(outputFile).name, outputFile, inputFiles_str)
     
-            osgArgString += " ARGUMENTS=\"{0}\"".format(pyArgString)
+#             osgArgString += " ARGUMENTS=\"{0}\"".format(pyArgString)
             
-            return osgArgString
+#             return osgArgString
 
-    def makeUpperLimitDag(self, task_name, freq, mean2F_th, numTopList, stage, freqDerivOrder, nSeg,
-                          sftFiles, skyUncertainty=1e-4, h0est=1e-25, nInj=100,
-                          request_memory='4GB', request_disk='4GB', request_cpu=4,
-                          cluster=False, workInLocalDir=False, 
-                          OSG=False, OSDF=False, metric='None',
-                          exe=None, image=None):
+#     def makeUpperLimitDag(self, task_name, freq, mean2F_th, numTopList, stage, freqDerivOrder, nSeg,
+#                           sftFiles, skyUncertainty=1e-4, h0est=1e-25, nInj=100,
+#                           request_memory='4GB', request_disk='4GB', request_cpu=4,
+#                           cluster=False, workInLocalDir=False, 
+#                           OSG=False, OSDF=False, metric='None',
+#                           exe=None, image=None):
 
-        """
-        Make condor DAG file for Upper Limit stage.
-        """
-        t0 = time.time()
+#         """
+#         Make condor DAG file for Upper Limit stage.
+#         """
+#         t0 = time.time()
         
-        if OSDF and not OSG:
-            print('Warning: You are reading SFTs from OSDF but not using OSG computing resources.')
+#         if OSDF and not OSG:
+#             print('Warning: You are reading SFTs from OSDF but not using OSG computing resources.')
 
-        self.freqParamName, self.freqDerivParamName = phaseParamName(freqDerivOrder)
-        self.numTopList = numTopList
+#         self.freqParamName, self.freqDerivParamName = phaseParamName(freqDerivOrder)
+#         self.numTopList = numTopList
             
-        dagFileName = self.paths.dag_file(freq, task_name, stage)
-        Path(dagFileName).parent.mkdir(parents=True, exist_ok=True)
-        Path(dagFileName).unlink(missing_ok=True)
+#         dagFileName = self.paths.dag_file(freq, task_name, stage)
+#         Path(dagFileName).parent.mkdir(parents=True, exist_ok=True)
+#         Path(dagFileName).unlink(missing_ok=True)
         
-        crFiles = self.paths.condor_record_files(freq, task_name, stage)
-        makeDir(crFiles)
+#         crFiles = self.paths.condor_record_files(freq, task_name, stage)
+#         makeDir(crFiles)
 
 
-        argStr = self.weaveArgStr(nSeg)
-        subFileName = self.writeSub(freq, stage, task_name, crFiles, argStr, 
-                                    request_memory=request_memory, request_disk=request_disk, request_cpu=request_cpu,
-                                    OSG=OSG, OSDF=OSDF, exe=Path(exe).name, image=Path(image).name)
+#         argStr = self.weaveArgStr(nSeg)
+#         subFileName = self.writeSub(freq, stage, task_name, crFiles, argStr, 
+#                                     request_memory=request_memory, request_disk=request_disk, request_cpu=request_cpu,
+#                                     OSG=OSG, OSDF=OSDF, exe=Path(exe).name, image=Path(image).name)
         
-        argList = self.upperLimitArgs(freq, stage, mean2F_th, task_name, nSeg, sftFiles, 1, metric=metric,
-                                      sftFiles=sftFiles, nInj=nInj, skyUncertainty=skyUncertainty, h0est=h0est, num_cpus=request_cpu,
-                                      cluster=cluster, workInLocalDir=workInLocalDir, OSG=OSG, OSDF=OSDF)
+#         argList = self.upperLimitArgs(freq, stage, mean2F_th, task_name, nSeg, sftFiles, 1, metric=metric,
+#                                       sftFiles=sftFiles, nInj=nInj, skyUncertainty=skyUncertainty, h0est=h0est, num_cpus=request_cpu,
+#                                       cluster=cluster, workInLocalDir=workInLocalDir, OSG=OSG, OSDF=OSDF)
         
-        wc.writeSearchDag(str(dagFileName), task_name, str(subFileName), 1, argList)
+#         wc.writeSearchDag(str(dagFileName), task_name, str(subFileName), 1, argList)
 
-        print('Finish writing {0} dag files for {1} Hz'.format(stage, freq))
-        print('Time used = {:.2f}s'.format(time.time()-t0))
-        return dagFileName
+#         print('Finish writing {0} dag files for {1} Hz'.format(stage, freq))
+#         print('Time used = {:.2f}s'.format(time.time()-t0))
+#         return dagFileName
