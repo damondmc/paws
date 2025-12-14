@@ -1,17 +1,15 @@
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
-from pathlib import Path
 
-from ..definitions import inj_param_name, phase_param_name
-from .. import frequency_range as fr
+from paws.definitions import inj_param_name, phase_param_name
+from . import models as fr
 
 class InjectionParamGenerator:
-    def __init__(self, target, cohDay, refTime, fBand=0.1):
+    def __init__(self, target, ref_time, f0_band=0.1):
         self.target = target
-        self.cohDay = cohDay
-        self.refTime = refTime
-        self.fBand = fBand
+        self.ref_time = ref_time
+        self.f0_band = f0_band
         self.inj_col_names = inj_param_name()
 
     @staticmethod
@@ -67,8 +65,8 @@ class InjectionParamGenerator:
         band_idx = np.random.randint(0, len(non_sat_bands), n_inj)
         selected_bands = non_sat_bands[band_idx]
         
-        # Uniform frequency within the specific 0.1Hz (or fBand) chunk
-        f0 = selected_bands + np.random.uniform(0, self.fBand, n_inj)
+        # Uniform frequency within the specific 0.1Hz (or f0_band) chunk
+        f0 = selected_bands + np.random.uniform(0, self.f0_band, n_inj)
         return f0
 
     def generate_injection_table(self, non_sat_bands, h0, n_inj, inj_freq_deriv_order, sky_uncertainty):
@@ -88,7 +86,7 @@ class InjectionParamGenerator:
 
         # 2. Polarization angle & reference time
         inj_data['psi'] = np.random.uniform(-np.pi/4, np.pi/4, n_inj)
-        inj_data['refTime'] = self.refTime
+        inj_data['refTime'] = self.ref_time
         
         cos_i = np.random.uniform(-1, 1, n_inj)
         inj_data['aPlus'] = h0 * (1. + cos_i**2) / 2.

@@ -4,9 +4,9 @@ import numpy as np
 from tqdm import tqdm
 from pathlib import Path
 
-from ..filePath import PathManager
-from ..definitions import taskName, phaseParamName
-from ..io import readTemplateCount, makeDir, getSpacing  
+from ..filepaths import PathManager
+from ..definitions import task_name, phase_param_name
+from ..io import read_template_count, make_dir, get_spacing 
 from . import tools
 from .clustering import clustering  
 
@@ -47,16 +47,16 @@ class ResultManager:
             A list of template counts read from the output files for each job.
         """
         templateList = []
-        task_name = taskName(self.target['name'], stage, cohDay, freqDerivOrder)
+        taskname = task_name(self.target['name'], stage, cohDay, freqDerivOrder)
         
         # We need to construct the specific output filenames. 
         # Using the PathManager to get the base pattern.
-        crfiles = self.paths.condor_record_files(freq, task_name, stage)
+        crfiles = self.paths.condor_record_files(freq, taskname, stage)
         base_out_path = str(crfiles[0]).rsplit('.', 1)[0] + '.'
 
         for jobIndex in range(1, nJobs+1):
             outFilePath = f"{base_out_path}{jobIndex}"
-            templateList.append(readTemplateCount(outFilePath))
+            templateList.append(read_template_count(outFilePath))
         return templateList
         
     def calMean2F_threshold(self, cohDay, freq, nJobs, nSeg):
@@ -104,7 +104,7 @@ class ResultManager:
         data.add_column(mean2F_th * np.ones(len(data)), name='mean2F threshold')
     
         # Get parameter names (e.g., ['f0', 'f1dot', ...])
-        _, deriv_params = phaseParamName(freqDerivOrder)
+        _, deriv_params = phase_param_name(freqDerivOrder)
         
         for param in deriv_params:
             data.add_column(spacing[param] * np.ones(len(data)), name=param) 
@@ -142,7 +142,7 @@ class ResultManager:
         """
         Internal core function to read job outputs, filter outliers, and write the combined FITS file.
         """      
-        task_name = taskName(self.target['name'], stage, cohDay, freqDerivOrder)
+        taskname = task_name(self.target['name'], stage, cohDay, freqDerivOrder)
          
         outlierTableList = []
         # Info table to track stats per job
@@ -151,14 +151,14 @@ class ResultManager:
         for i, jobIndex in enumerate(tqdm(range(1, nJobs+1), desc=f"Collecting {freq}Hz")):
             
             # 1. Get Path
-            weaveFilePath = self.paths.weave_output_file(freq, task_name, jobIndex, stage)
+            weaveFilePath = self.paths.weave_output_file(freq, taskname, jobIndex, stage)
             if workInLocalDir:
                 weaveFilePath = Path(weaveFilePath).name
             
             try:
                 weave_data = fits.getdata(weaveFilePath, 1)
                 # 3. Get Spacing (Resolution) from FITS header or tools
-                spacing = getSpacing(weaveFilePath, freqDerivOrder)
+                spacing = get_spacing(weaveFilePath, freqDerivOrder)
                 
                 # 4. Filter Outliers
                 _outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th, numTopListLimit, freqDerivOrder)  
@@ -196,11 +196,11 @@ class ResultManager:
         outlier_hdul = fits.HDUList([primary_hdu, outlier_hdu, info_hdu, nsb_hdu])
         
         # 8. Write Combined File
-        outlierFilePath = self.paths.outlier_file(freq, task_name, stage, cluster=False)
+        outlierFilePath = self.paths.outlier_file(freq, taskname, stage, cluster=False)
         if workInLocalDir:
             outlierFilePath = Path(outlierFilePath).name
             
-        makeDir([outlierFilePath])
+        make_dir([outlierFilePath])
         outlier_hdul.writeto(outlierFilePath, overwrite=True)  
        
         # 9. Clustering (Optional)
@@ -234,7 +234,7 @@ class ResultManager:
             else:
                 cluster_hdul = outlier_hdul
                 
-            outlierClusterFilePath = self.paths.outlier_file(freq, task_name, stage, cluster=True)
+            outlierClusterFilePath = self.paths.outlier_file(freq, taskname, stage, cluster=True)
             if workInLocalDir:
                 outlierClusterFilePath = Path(outlierClusterFilePath).name
             
@@ -281,17 +281,17 @@ class ResultManager:
         """
         Writes results specifically for bands that were saturated in a previous pass.
         """      
-        task_name = taskName(self.target['name'], stage, cohDay, freqDerivOrder)
+        taskname = task_name(self.target['name'], stage, cohDay, freqDerivOrder)
         outlierTableList = []
     
         for idx in tqdm(jobIndex, desc="Processing Sat Bands"):
-            weaveFilePath = self.paths.weave_output_file(freq, task_name, idx, stage)
+            weaveFilePath = self.paths.weave_output_file(freq, taskname, idx, stage)
             if workInLocalDir:
                 weaveFilePath = Path(weaveFilePath).name
             
             try:
                 weave_data = fits.getdata(weaveFilePath, 1)
-                spacing = getSpacing(weaveFilePath, freqDerivOrder)
+                spacing = get_spacing(weaveFilePath, freqDerivOrder)
                 _outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th, numTopListLimit, freqDerivOrder)  
                 outlierTableList.append(_outlier)
             except FileNotFoundError:
@@ -308,13 +308,13 @@ class ResultManager:
         outlier_hdul = fits.HDUList([primary_hdu, outlier_hdu])
         
         # Note: changing taskName for filename generation to indicate SatBand
-        task_name = taskName(self.target['name'], stage+'SatBand', cohDay, freqDerivOrder)
-        outlierFilePath = self.paths.outlier_file(freq, task_name, stage, cluster=False)
+        taskname = task_name(self.target['name'], stage+'SatBand', cohDay, freqDerivOrder)
+        outlierFilePath = self.paths.outlier_file(freq, taskname, stage, cluster=False)
         
         if workInLocalDir:
             outlierFilePath = Path(outlierFilePath).name
             
-        makeDir([outlierFilePath])
+        make_dir([outlierFilePath])
         outlier_hdul.writeto(outlierFilePath, overwrite=True)  
        
         return outlierFilePath 
@@ -361,14 +361,14 @@ class ResultManager:
         """
         Writes the injection results from the Weave output for a given frequency.
         """
-        task_name = taskName(self.target['name'], stage, cohDay, freqDerivOrder)
+        taskname = task_name(self.target['name'], stage, cohDay, freqDerivOrder)
         outlierTableList = []
         injTableList = []
         info_data = np.recarray((nJobs,), dtype=[(key, '>f8') for key in ['freq', 'jobIndex', 'outliers']]) 
   
         # Iterate over jobs
         for i, jobIndex in enumerate(tqdm(range(1, nJobs+1), desc=f"Inj Collection {freq}Hz")):
-            weaveFilePath = self.paths.weave_output_file(freq, task_name, jobIndex, stage)
+            weaveFilePath = self.paths.weave_output_file(freq, taskname, jobIndex, stage)
             if workInLocalDir:
                 weaveFilePath = Path(weaveFilePath).name
             
@@ -377,7 +377,7 @@ class ResultManager:
                 weave_data = fits.getdata(weaveFilePath, 1)
                 inj_data = fits.getdata(weaveFilePath, 2)
                 
-                spacing = getSpacing(weaveFilePath, freqDerivOrder)
+                spacing = get_spacing(weaveFilePath, freqDerivOrder)
                 
                 # Filter outliers
                 _outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th, numTopListLimit, freqDerivOrder)  
@@ -415,11 +415,11 @@ class ResultManager:
         
         outlier_hdul = fits.HDUList([primary_hdu, outlier_hdu, inj_hdu, info_hdu])
         
-        outlierFilePath = self.paths.outlier_file(freq, t_name, stage, cluster=False)
+        outlierFilePath = self.paths.outlier_file(freq, taskname, stage, cluster=False)
         if workInLocalDir:
             outlierFilePath = Path(outlierFilePath).name
             
-        makeDir([outlierFilePath])
+        make_dir([outlierFilePath])
         outlier_hdul.writeto(outlierFilePath, overwrite=True) 
                 
         # Clustering
@@ -454,7 +454,7 @@ class ResultManager:
 
             cluster_hdul = fits.HDUList([primary_hdu, cluster_hdu, inj_hdu, info_hdu])
             
-            outlierFilePath = self.paths.outlier_file(freq, t_name, stage, cluster=True)
+            outlierFilePath = self.paths.outlier_file(freq, taskname, stage, cluster=True)
             if workInLocalDir:
                 outlierFilePath = Path(outlierFilePath).name
             
@@ -476,7 +476,7 @@ class ResultManager:
         """
         Writes the follow-up results for injections at a given frequency, supporting chunking.
         """
-        task_name = taskName(self.target['name'], stage, cohDay, freqDerivOrder)
+        taskname = task_name(self.target['name'], stage, cohDay, freqDerivOrder)
     
         outlierTableList = []
         injTableList = []
@@ -488,13 +488,13 @@ class ResultManager:
         
         # Iterate over each job in the chunk
         for i, jobIndex in enumerate(range(start_job, end_job)):
-            weaveFilePath = self.paths.weave_output_file(freq, task_name, jobIndex, stage)
+            weaveFilePath = self.paths.weave_output_file(freq, taskname, jobIndex, stage)
             if workInLocalDir:
                 weaveFilePath = Path(weaveFilePath).name
             
             try:
                 weave_data = fits.getdata(weaveFilePath, 1)
-                spacing = getSpacing(weaveFilePath, freqDerivOrder)
+                spacing = get_spacing(weaveFilePath, freqDerivOrder)
                 
                 # Note: mean2F_th is an array here, indexed by i
                 _outlier = self.makeOutlierTable(weave_data, spacing, mean2F_th[i], numTopListLimit, freqDerivOrder)
@@ -537,7 +537,7 @@ class ResultManager:
         outlier_hdul.append(info_hdu)
         
         # Generate Output Path (Handle Chunk Naming)
-        outlierFilePath = self.paths.outlier_file(freq, task_name, stage, cluster=(cluster and not inj))
+        outlierFilePath = self.paths.outlier_file(freq, taskname, stage, cluster=(cluster and not inj))
         if workInLocalDir:
             outlierFilePath = Path(outlierFilePath).name
             
@@ -546,7 +546,7 @@ class ResultManager:
             # Ideally PathManager handles this, but for now we append to the string.
             outlierFilePath = outlierFilePath.replace('.fts', f'_chunk{chunk_index}.fts')
             
-        makeDir([outlierFilePath])
+        make_dir([outlierFilePath])
         outlier_hdul.writeto(outlierFilePath, overwrite=True)     
         
         # Clustering for Follow-Up
@@ -580,7 +580,7 @@ class ResultManager:
             cluster_hdul.append(info_clustered_hdu)
             
             # Write Clustered File
-            outlierFilePath = self.paths.outlier_file(freq, task_name, stage, cluster=cluster)
+            outlierFilePath = self.paths.outlier_file(freq, taskname, stage, cluster=cluster)
             if chunk_size != 1:
                 outlierFilePath = outlierFilePath.replace('.fts', f'_chunk{chunk_index}.fts')
             if workInLocalDir:
@@ -671,8 +671,8 @@ class ResultManager:
         - outlierFilePath: str
             The path to the output file containing the combined outlier results.
         """
-        task_name = taskName(self.target['name'], stage, cohDay, freqDerivOrder)
-        outlierFilePath = self.paths.outlier_file(freq, task_name, stage, cluster=cluster)
+        taskname = task_name(self.target['name'], stage, cohDay, freqDerivOrder)
+        outlierFilePath = self.paths.outlier_file(freq, taskname, stage, cluster=cluster)
         
         if workInLocalDir:
             outlierFilePath = Path(outlierFilePath).name
@@ -716,7 +716,7 @@ class ResultManager:
         return outlierFilePath
 
     def ensembleFollowUpResult(self, stage, inj_stage, outlierFilePathList, inj_outlierFilePathList, mean2F_ratio_list, numTopListToFollowUp_list,
-                               freq, final_stage, task_name, workInLocalDir=False, cluster=False):
+                               freq, final_stage, taskname, workInLocalDir=False, cluster=False):
         """
         Combines results from multiple follow-up stages into one summary FITS file.
 
@@ -736,7 +736,7 @@ class ResultManager:
         - final_stage: str
             A label or identifier for the final processing stage. This label is included in the file name to indicate the completion stage of the analysis.
 
-        - taskName: str
+        - taskname: str
             Name of the task or job associated with this process, used to label the output file for easy identification.
 
         - workInLocalDir: bool, optional (default=False)
@@ -800,12 +800,12 @@ class ResultManager:
         
         # Write Final Ensemble File
         # Using paths manager manually or custom logic because "final_stage" might be arbitrary
-        outlierFilePath = self.paths.outlier_file(freq, task_name, final_stage, cluster=cluster)    
+        outlierFilePath = self.paths.outlier_file(freq, taskname, final_stage, cluster=cluster)    
         
         if workInLocalDir:
             outlierFilePath = Path(outlierFilePath).name        
         else:
-            makeDir([outlierFilePath])    
+            make_dir([outlierFilePath])    
         
         outlier_hdul.writeto(outlierFilePath, overwrite=True)
         return outlierFilePath

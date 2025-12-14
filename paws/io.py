@@ -1,6 +1,6 @@
 from pathlib import Path
 from astropy.io import fits
-from .definitions import phaseParamName 
+from paws.definitions import phase_param_name
 import re
 import logging
 
@@ -84,7 +84,7 @@ def get_spacing(data_file_path, freq_deriv_order):
     """
     meta_data = fits.getheader(data_file_path)
 
-    freq_param_name, freq_bandwidth_name = phaseParamName(freq_deriv_order)
+    freq_param_name, freq_bandwidth_name = phase_param_name(freq_deriv_order)
     n = len(freq_param_name)
 
     n_temp_cum = [meta_data[f'NSEMITMPL NU{i}DOT'] for i in range(n)]

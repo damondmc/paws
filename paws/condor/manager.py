@@ -5,7 +5,7 @@ from tqdm import tqdm
 from . import writer as wc
 from ..io import make_dir
 from ..definitions import phase_param_name
-from ..file_paths import PathManager
+from ..filepaths import PathManager
 
 class CondorManager:
     """

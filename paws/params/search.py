@@ -1,5 +1,5 @@
-from .definitions import phaseParamName
-from . import frequency_range as fr  # Relative import of the sibling file
+from paws.definitions import phase_param_name
+from . import models as fr  # Relative import of the sibling file
 from tqdm import tqdm
 import numpy as np
 from astropy.io import fits
@@ -12,19 +12,19 @@ class SearchParamGenerator:
     and constructs a parameter table for each frequency bin.
     """
 
-    def __init__(self, f_band=0.1, freq_deriv_order=2, nc_min=2, nc_max=7):
+    def __init__(self, f0_band=0.1, freq_deriv_order=2, nc_min=2, nc_max=7):
         """
         Initialize the generator.
 
         Parameters:
-        - f_band (float): Frequency band width for each search segment (default: 0.1 Hz).
+        - f0_band (float): Frequency band width for each search segment (default: 0.1 Hz).
         - freq_deriv_order (int): Order of frequency derivatives to consider (default: 2 for f1dot and f2dot).
         - nc_min (int): Minimum braking index for frequency derivative calculations (default: 2).
         - nc_max (int): Maximum braking index for frequency derivative calculations (default: 7).
         """
-        self.f_band = f_band
+        self.f0_band = f0_band
         # Assuming phaseParamName is defined in definitions.py and returns (names, deriv_names)
-        self.freq_param_name, self.freq_deriv_param_name = phaseParamName(freq_deriv_order)
+        self.freq_param_name, self.freq_deriv_param_name = phase_param_name(freq_deriv_order)
         self.nc_min = nc_min
         self.nc_max = nc_max
         # Initialize attributes that are set later
@@ -48,20 +48,20 @@ class SearchParamGenerator:
         """
         # Calculate size of the array
         # n = (number of frequency sub-bands) * (f1 segments) * (f2 segments)
-        n = int((1.0 / self.f_band) * n_f1 * n_f2)
+        n = int((1.0 / self.f0_band) * n_f1 * n_f2)
         
         dtype_list = [(key, '>f8') for key in (self.freq_param_name + self.freq_deriv_param_name)]
         data = np.recarray((n,), dtype=dtype_list) 
         
         # Iterate through sub-bands (e.g., 0.1Hz steps within the current 1Hz band)
-        steps = int(1.0 / self.f_band)
+        steps = int(1.0 / self.f0_band)
         
         for i in range(steps):
-            f0 = freq + i * self.f_band
-            f0_min, _, f0_band = fr.f0_broad_range(f0, self.f_band)
+            f0 = freq + i * self.f0_band
+            f0_min, _, f0_band = fr.f0_broad_range(f0, self.f0_band)
             
             for j in range(n_f1):
-                _f1_min, _, _f1_band = fr.f1_broad_range(f0, self.f_band, self.tau, nc_min=self.nc_min, nc_max=self.nc_max)
+                _f1_min, _, _f1_band = fr.f1_broad_range(f0, self.f0_band, self.tau, nc_min=self.nc_min, nc_max=self.nc_max)
                 f1_band = _f1_band / n_f1  # divide f1dot into n segments
                 f1_min = _f1_min + j * f1_band
                 f1_max = f1_min + f1_band
@@ -71,7 +71,7 @@ class SearchParamGenerator:
                     f1_band = 0.0 - f1_min
                         
                 for k in range(n_f2):
-                    _f2_min, _, _f2_band = fr.f2_broad_range(freq, self.f_band, f1_min, f1_max, nc_min=self.nc_min, nc_max=self.nc_max)
+                    _f2_min, _, _f2_band = fr.f2_broad_range(freq, self.f0_band, f1_min, f1_max, nc_min=self.nc_min, nc_max=self.nc_max)
                     f2_band = _f2_band / n_f2  
                     f2_min = _f2_min + k * f2_band
                     f2_max = f2_min + f2_band
@@ -94,7 +94,7 @@ class SearchParamGenerator:
         data.add_column(self.ddelta * np.ones(n), name='ddelta')           
         return fits.BinTableHDU(data)
         
-    def generate_parameters(self, tau, alpha, dalpha, delta, ddelta, f_min, f_max, df1=1e-9, df2=1e-19):
+    def generate_parameters(self, tau, alpha, dalpha, delta, ddelta, f0_min, f0_max, df1=1e-9, df2=1e-19):
         """
         Generate initial search parameters for a given age and sky location.
 
@@ -104,8 +104,8 @@ class SearchParamGenerator:
             - dalpha (float): Uncertainty in the right ascension (in radians).
             - delta (float): Declination of the target pulsar (in radians).
             - ddelta (float): Uncertainty in the declination (in radians).
-            - f_min (int): Minimum starting frequency (in Hz).
-            - f_max (int): Maximum starting frequency (in Hz).
+            - f0_min (int): Minimum starting frequency (in Hz).
+            - f0_max (int): Maximum starting frequency (in Hz).
             - df1_dot (float): Desired resolution for f1dot (default: 1e-9 Hz/s).
             - df2_dot (float): Desired resolution for f2dot (default: 1e-19 Hz/s).
         
@@ -121,8 +121,8 @@ class SearchParamGenerator:
         params = {}
         for freq in tqdm(range(f_min, f_max)):
             # number of segment for f1dot range
-            n_f1 = fr.get_n_f1_dot(freq, self.f_band, self.tau, df1=df1) 
+            n_f1 = fr.get_n_f1_dot(freq, self.f0_band, self.tau, df1=df1) 
             # number of segment for f2dot range
-            n_f2 = fr.get_n_f2_dot(freq, self.f_band, self.tau, df2=df2) 
+            n_f2 = fr.get_n_f2_dot(freq, self.f0_band, self.tau, df2=df2) 
             params[str(freq)] = self.generate_parameter_table(freq, n_f1, n_f2)
         return params

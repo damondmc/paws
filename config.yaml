@@ -4,30 +4,30 @@
 
 # --- User & Paths ---
 user: hoitim.cheung
-homeDir: /home/hoitim.cheung/galacticCenter/
-OSDFDir: /osdf/igwn/cit/staging/hoitim.cheung/
+home_dir: /home/hoitim.cheung/galacticCenter/
+osdf_dir: /osdf/igwn/cit/staging/hoitim.cheung/
 
 # Executables
 executables:
   weave: /cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_Weave
-  splitSFTs: /cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_splitSFTs
-  estimateULs: /cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_ComputeFstatMCUpperLimit
+  split_sfts: /cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_splitSFTs
+  estimate_uls: /cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_ComputeFstatMCUpperLimit
 
 # --- Data label ---
-sftSource: C00-C01_Gated_G02_1800s
+sft_source: C00-C01_Gated_G02_1800s
 
 # --- Computing label ---
-accGroup: ligo.prod.o4.cw.directedisolated.semicoherent
+acc_group: ligo.prod.o4.cw.directedisolated.semicoherent
 
 # --- Search Configuration Parameters ---
-fBand: 0.025   # Resolution of search in frequency
-semiMM: 0.2    # Maximum accepted mismatch of the semicoherent metric
-cohMM: 0.1     # Maximum accepted mismatch of the coherent metrics
-numTopList: 2000  # Number of top candidates to keep from the search job
+f_band: 0.025   # Resolution of search in frequency
+semi_mm: 0.2    # Maximum accepted mismatch of the semicoherent metric
+coh_mm: 0.1     # Maximum accepted mismatch of the coherent metrics
+num_top_list: 2000  # Number of top candidates to keep from the search job
 
 # --- Injection & Follow-up ---
-cluster_nSpacing: 4.0   # For injection and followUp
-followUp_nSpacing: 8.0  # For injection and followUp
+cluster_n_spacing: 4.0   # For injection and followUp
+followup_n_spacing: 8.0  # For injection and followUp
 
 # --- Braking index ---
 nc_min: 2.0

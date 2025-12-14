@@ -20,12 +20,12 @@ class PathManager:
         self.target = target
         
         # Define Roots as Path objects for easy manipulation
-        self.home_dir = Path(config['homeDir'])
-        self.osdf_dir = Path(config['OSDFDir'])
+        self.home_dir = Path(config['home_dir'])
+        self.osdf_dir = Path(config['osdf_dir'])
         
         # Frequently used attributes
         self.target_name = target['name']
-        self.sft_source = config['sftSource']
+        self.sft_source = config['sft_source']
         self.user = config['user']
 
     # ---------------------------------------------------------
@@ -40,16 +40,16 @@ class PathManager:
     
     @property
     def estimate_upper_limit_executable(self):
-        return self.config.get('executables', {}).get('estimateULs',
+        return self.config.get('executables', {}).get('estimate_uls',
             '/cvmfs/software.igwn.org/conda/envs/igwn-py39-20231212/bin/lalpulsar_ComputeFstatMCUpperLimit')    
 
     @property
     def follow_up_executable(self):
-        return self.home_dir / 'scripts/followUp.py'
+        return self.home_dir / 'scripts/follow_up.py'
 
     @property
     def upper_limit_executable(self):
-        return self.home_dir / 'scripts/upperLimit.py'
+        return self.home_dir / 'scripts/upper_limit.py'
     
     @property
     def analyze_result_executable(self):
@@ -93,7 +93,7 @@ class PathManager:
 
     def dag_group_file(self, f_min, f_max, stage):
         """Path to the text file listing all DAGs for a band."""
-        filename = f"{self.target_name}_{stage}_{f_min}-{f_max}Hz_dagFiles.txt"
+        filename = f"{self.target_name}_{stage}_{f_min}-{f_max}Hz_dag.txt"
         return self.home_dir / 'dagJob' / filename
 
     def dag_file(self, freq, task_name, stage):
@@ -122,7 +122,7 @@ class PathManager:
 
         out = base_dir / 'OUT' / f"{task_name}_{freq}Hz.out.$(JobID)"
         err = base_dir / 'ERR' / f"{task_name}_{freq}Hz.err.$(JobID)"
-        log = base_dir / 'LOG' / f"{task_name}_{freq}Hz_Log.txt.$(JobID)"
+        log = base_dir / 'LOG' / f"{task_name}_{freq}Hz_log.txt.$(JobID)"
         
         return [str(out), str(err), str(log)]
 
@@ -152,4 +152,4 @@ class PathManager:
 
     def outlier_from_saturated_file(self, freq, task_name, stage):
         base = self.home_dir / 'results' / stage / self.target_name / self.sft_source / str(freq) / 'Outliers'
-        return base / f"{task_name}_{freq}Hz_LoudestOutlierFromSaturated.fts"
+        return base / f"{task_name}_{freq}Hz_loudest_outlier_from_saturated.fts"

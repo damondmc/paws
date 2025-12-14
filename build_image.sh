@@ -2,6 +2,6 @@
 
 echo "Building image from"
 
-apptainer build cw_manager_gc.sif cw_image.def
+apptainer build paws.sif paws.def
 
 echo "Done"

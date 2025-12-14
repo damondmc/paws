@@ -1,12 +1,11 @@
-from tqdm import tqdm
-import numpy as np
 from astropy.io import fits
 from astropy.table import Table
 
-from . import frequency_range as fr         
-from ..definitions import phase_param_name
+from . import models as fr         
+from paws.definitions import phase_param_name
+
 class FollowUpParamGenerator():    
-    def __init__(self, target, config, nc_min=2, nc_max=7):
+    def __init__(self, target, nc_min=2, nc_max=7):
         """
         Initialize the FollowUpParams generator.
 
