@@ -1,16 +1,14 @@
-from . import writer as wc
-import numpy as np
-from pathlib import Path
-from ..utils import filePath as fp
-from ..utils import setup_parameter as setup
-from ..utils import utils as utils
 from tqdm import tqdm
+from pathlib import Path
 
-class upperLimitManager:
-    def __init__(self, target, obsDay):
-        self.obsDay = obsDay
-        self.setup = setup
+from .writer import write_search_dagfile, write_search_subfile
+from paws.definitions import phase_param_name, task_name
+from paws.io import make_dir 
+
+class UpperLimitManager:
+    def __init__(self, target, config):
         self.target = target
+        self.config = config
     
     def upperLimitArgs(self, metric, cohDay, freq, stage, freqDerivOrder,  numTopList, nInj, skyUncertainty, h0est, num_cpus, sftFiles, cluster, workInLocalDir, OSDF): 
         if workInLocalDir:
@@ -32,8 +30,8 @@ class upperLimitManager:
 
     def transferFileArgs(self, cohDay, freq, freqDerivOrder, metric, stage, sftFiles, cluster=False, OSG=True):
     
-        taskName = utils.taskName(self.target, 'search', cohDay, freqDerivOrder, freq)
-        searchResultFile = fp.outlierFilePath(self.target, freq, taskName, 'search', cluster=cluster) 
+        taskname = task_name(self.target, 'search', cohDay, freqDerivOrder, freq)
+        searchResultFile = fp.outlierFilePath(self.target, freq, taskname, 'search', cluster=cluster) 
         
         exe = fp.upperLimitExecutableFilePath()
         image = fp.imageFilePath()
@@ -48,41 +46,41 @@ class upperLimitManager:
         inputFiles += ", {}".format(metric)
         
         # using OSG computing resources (different format for .sub file)
-        taskName = utils.taskName(self.target, stage, cohDay, freqDerivOrder, freq)
-        outlierFilePath = fp.outlierFilePath(self.target, freq, taskName, stage, cluster=cluster) 
-        utils.makeDir([outlierFilePath])
+        taskname = task_name(self.target, stage, cohDay, freqDerivOrder, freq)
+        outlierFilePath = fp.outlierFilePath(self.target, freq, taskname, stage, cluster=cluster) 
+        make_dir([outlierFilePath])
         argList="OUTPUTFILE=\"{0}\" REMAPOUTPUTFILE=\"{1}\" TRANSFERFILES=\"{2}\" ".format(
             Path(outlierFilePath).name, outlierFilePath, inputFiles)
         return argList
     
     def makeUpperLimitDag(self, fmin, fmax, cohDay, freqDerivOrder=2, metric='', stage='upperLimit', skyUncertainty=1e-4, h0est=[1e-25], nInj=100, numTopList=1000, num_cpus=4, request_memory='4GB', request_disk='4GB', cluster=False, workInLocalDir=False, OSG=False, OSDF=False):
               
-        taskName = utils.taskName(self.target, stage, cohDay, freqDerivOrder, str(fmin)+'-'+str(fmax)) 
-        dagFileName = fp.dagFilePath('', self.target, taskName, stage)
+        taskname = task_name(self.target, stage, cohDay, freqDerivOrder, str(fmin)+'-'+str(fmax)) 
+        dagFileName = fp.dagFilePath('', self.target, taskname, stage)
         Path(dagFileName).unlink(missing_ok=True)
         
         for jobIndex, freq in tqdm(enumerate(range(fmin, fmax), 1), total=fmax-fmin):
-            taskName = utils.taskName(self.target, stage, cohDay, freqDerivOrder, freq)
+            taskname = task_name(self.target, stage, cohDay, freqDerivOrder, freq)
             exe = fp.upperLimitExecutableFilePath()
             exe = Path(exe).name
-            subFileName = fp.condorSubFilePath(self.target, freq, taskName, stage)
+            subFileName = fp.condorSubFilePath(self.target, freq, taskname, stage)
             Path(subFileName).unlink(missing_ok=True)
             
-            crFiles = fp.condorRecordFilePath(freq, self.target, taskName, stage)
-            utils.makeDir(crFiles)
+            crFiles = fp.condorRecordFilePath(freq, self.target, taskname, stage)
+            make_dir(crFiles)
             
             image = fp.imageFilePath()
             image = Path(image).name
             sftFiles = utils.sftEnsemble(freq, self.obsDay, OSDF=OSDF)
             #est_sftFiles = utils.sftEnsemble(freq, cohDay, OSDF=OSDF)
             argList = self.upperLimitArgs(metric, cohDay, freq, stage, freqDerivOrder, numTopList, nInj, skyUncertainty, h0est[jobIndex-1], num_cpus, sftFiles, cluster, workInLocalDir, OSDF)
-            wc.writeSearchSub(subFileName, exe, True, crFiles[0], crFiles[1], crFiles[2], argList, request_memory=request_memory, request_disk=request_disk, OSG=OSG, OSDF=OSDF, image=image)
+            write_search_subfile(subFileName, exe, True, crFiles[0], crFiles[1], crFiles[2], argList, request_memory=request_memory, request_disk=request_disk, OSG=OSG, OSDF=OSDF, image=image)
             
            # call function to write .sub files for analyze result
             ######################## Argument string use to write to DAG  ########################        
             argList = self.transferFileArgs(cohDay, freq, freqDerivOrder, metric, stage, sftFiles, cluster, OSG)
                              
             # Call function from WriteCondorFiles.py which will write DAG 
-            wc.writeSearchDag(dagFileName, taskName, subFileName, jobIndex, argList)
+            write_search_dagfile(dagFileName, taskname, subFileName, jobIndex, argList)
         print('Finish writing upper limit dag from {0} stage for {1}-{2}Hz'.format(stage, fmin, fmax))
 

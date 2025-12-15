@@ -21,9 +21,9 @@ acc_group: ligo.prod.o4.cw.directedisolated.semicoherent
 
 # --- Search Configuration Parameters ---
 f0_band: 0.025   # Resolution of search in frequency
-semi_mm: 0.2    # Maximum accepted mismatch of the semicoherent metric
-coh_mm: 0.1     # Maximum accepted mismatch of the coherent metrics
-num_top_list: 2000  # Number of top candidates to keep from the search job
+semi_mm: 0.2    # Maximum accepted mismatch of the semicoherent metric (over the whole observation time)
+coh_mm: 0.1     # Maximum accepted mismatch of the coherent metrics (each segment)
+num_top_list: 1000  # Number of top candidates to keep from the search job
 
 # --- Injection & Follow-up ---
 cluster_n_spacing: 4.0   # For injection and followUp
