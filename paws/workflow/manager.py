@@ -3,7 +3,6 @@ import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 
-# Import writers and utilities
 from .writer import write_search_subfile, write_search_dagfile
 from paws.io import make_dir
 from paws.definitions import phase_param_name, task_name
