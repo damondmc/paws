@@ -1,6 +1,0 @@
-numpy
-astropy
-pathlib
-tqdm
-scipy
-pyfstat
