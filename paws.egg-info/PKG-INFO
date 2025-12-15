@@ -1,0 +1,18 @@
+Metadata-Version: 2.4
+Name: paws
+Version: 1.0
+Summary: A package to manage: to create condor jobs and analysis the data for directed search of continuous gravitational wave signalsr
+Home-page: https://github.com/damondmc/cw_manager
+Author: Damon Cheung
+Author-email: damoncht@umich.edu
+Requires-Dist: numpy
+Requires-Dist: astropy
+Requires-Dist: pathlib
+Requires-Dist: tqdm
+Requires-Dist: scipy
+Requires-Dist: pyfstat
+Dynamic: author
+Dynamic: author-email
+Dynamic: home-page
+Dynamic: requires-dist
+Dynamic: summary

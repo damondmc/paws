@@ -1,15 +1,15 @@
 import numpy as np
 import sys 
 
-def get_n_f1(freq, f_band, tau, df1=1.5e-9):
+def get_n_f1_dot(freq, f_band, tau, df1_dot=1.5e-9):
     _, _, bandwidth = f1_broad_range(freq, f_band, tau)
-    n = bandwidth / df1
+    n = bandwidth / df1_dot
     return np.ceil(n).astype(int)
 
-def get_n_f2(freq, f_band, tau, df2=1.0e-19):
+def get_n_f2_dot(freq, f_band, tau, df2_dot=1.0e-19):
     f1_min, f1_max, _ = f1_broad_range(freq, f_band, tau)
     _, _, bandwidth = f2_broad_range(freq, f_band, f1_min, f1_max)
-    n = bandwidth / df2
+    n = bandwidth / df2_dot
     return np.ceil(n).astype(int)
 
 def f0_broad_range(f0, f_band):

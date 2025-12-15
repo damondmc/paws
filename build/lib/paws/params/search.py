@@ -122,8 +122,8 @@ class SearchParamGenerator:
         params = {}
         for freq in tqdm(range(f0_min, f0_max)):
             # number of segment for f1dot range
-            n_f1 = fr.get_n_f1(freq, self.f0_band, self.tau, df1=df1) 
+            n_f1 = fr.get_n_f1_dot(freq, self.f0_band, self.tau, df1=df1) 
             # number of segment for f2dot range
-            n_f2 = fr.get_n_f2(freq, self.f0_band, self.tau, df2=df2) 
+            n_f2 = fr.get_n_f2_dot(freq, self.f0_band, self.tau, df2=df2) 
             params[str(freq)] = self.generate_parameter_table(freq, n_f1, n_f2)
         return params

@@ -20,7 +20,7 @@ sft_source: C00-C01_Gated_G02_1800s
 acc_group: ligo.prod.o4.cw.directedisolated.semicoherent
 
 # --- Search Configuration Parameters ---
-f_band: 0.025   # Resolution of search in frequency
+f0_band: 0.025   # Resolution of search in frequency
 semi_mm: 0.2    # Maximum accepted mismatch of the semicoherent metric
 coh_mm: 0.1     # Maximum accepted mismatch of the coherent metrics
 num_top_list: 2000  # Number of top candidates to keep from the search job
