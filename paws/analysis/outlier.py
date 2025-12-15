@@ -7,7 +7,7 @@ from pathlib import Path
 from paws.filepaths import PathManager
 from paws.definitions import task_name, phase_param_name
 from paws.io import read_template_count, make_dir, get_spacing 
-from .tools import mean2F_threshold
+from .tools import detection_stat_threshold
 from .clustering import clustering  
 
 class ResultAnalysisManager:
@@ -69,7 +69,7 @@ class ResultAnalysisManager:
             n_temp = [t if t is not None else 0 for t in n_temp]
         
         total_templates = sum([t for t in n_temp if t is not None])
-        mean2f_th = mean2F_threshold(total_templates, n_seg)            
+        mean2f_th = detection_stat_threshold(total_templates, n_seg)            
         return mean2f_th
 
     def make_outlier_table(self, data, spacing, mean2f_th, toplist_limit=1000, freq_deriv_order=2):    
@@ -165,13 +165,13 @@ class ResultAnalysisManager:
                 info_data[i] = freq, job_index, 0, 0
 
         # 6. Identify Non-Saturated Bands
-        sat = info_data['saturated'].reshape(int(1/self.config['fBand']), int(n_jobs*self.config['fBand']))  
+        sat = info_data['saturated'].reshape(int(1/self.config['f0_band']), int(n_jobs*self.config['f0_band']))  
 
         idx = np.where(sat.sum(axis=1) == 0)[0]
         non_sat_band = np.recarray((len(idx),), dtype=[(key, '>f8') for key in ['nonSatBand']])
         
         if len(idx) > 0:
-            non_sat_band['nonSatBand'] = int(freq) + np.array(idx) * self.config['fBand']
+            non_sat_band['nonSatBand'] = int(freq) + np.array(idx) * self.config['f0_band']
            
         # 7. Create HDUs
         primary_hdu = fits.PrimaryHDU()
@@ -201,7 +201,7 @@ class ResultAnalysisManager:
                 
                 primary_hdu = fits.PrimaryHDU()
                 primary_hdu.header['HIERARCH mean2F_th'] = mean2f_th
-                primary_hdu.header['HIERARCH cluster_nSpacing'] = self.config['cluster_nSpacing']
+                primary_hdu.header['HIERARCH cluster_n_spacing'] = self.config['cluster_n_spacing']
                 
                 for name, value in spacing.items():
                     primary_hdu.header['HIERARCH {}'.format(name)] = value 
@@ -395,7 +395,7 @@ class ResultAnalysisManager:
         # Combine Tables
         primary_hdu = fits.PrimaryHDU()
         primary_hdu.header['HIERARCH mean2F_th'] = mean2f_th
-        primary_hdu.header['HIERARCH cluster_nSpacing'] = ''
+        primary_hdu.header['HIERARCH cluster_n_spacing'] = ''
         
         if outlier_table_list:
             outlier_hdu = fits.BinTableHDU(data=vstack(outlier_table_list), name=stage+'_outlier')
@@ -425,7 +425,7 @@ class ResultAnalysisManager:
             
             primary_hdu = fits.PrimaryHDU()
             primary_hdu.header['HIERARCH mean2F_th'] = mean2f_th
-            primary_hdu.header['HIERARCH cluster_nSpacing'] = self.config.get('cluster_nSpacing', 1)
+            primary_hdu.header['HIERARCH cluster_n_spacing'] = self.config.get('cluster_n_spacing', 1)
             
             centers_idx, cluster_size, cluster_member = clustering(outlier_hdu.data, freq_deriv_order) 
             

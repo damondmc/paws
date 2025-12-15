@@ -1,5 +1,5 @@
 import numpy as np
-from ..definitions import phaseParamName
+from ..definitions import phase_param_name
 
 # =============================================================================
 # Data Analysis & Clustering
@@ -19,7 +19,7 @@ def clustering(data, freqDerivOrder, cluster_nSpacing=4.0):
         cluster_member (list of numpy.ndarray): Members of each cluster.
     """
     # Extract phase parameter names
-    fn, dfn = phaseParamName(freqDerivOrder)
+    fn, dfn = phase_param_name(freqDerivOrder)
     
     # Create arrays for coordinates and spacings
     _data = np.column_stack([data[key] for key in fn])

@@ -57,9 +57,7 @@ def ellipticity_from_h0(freq, h0, Izz, I0, r):
     # Ellipticity calculation formula
     e = 9.46e-5 * (h0 /1e-24) * (I0/Izz) * (r/1.) * (1e2/freq)**2 
     return e
-
-
-### check the number 
+ 
 # Function to compute the strain from the braking index parameter alpha
 def h0_from_alpha(freq, alpha, Izz, I0, r):
     """
