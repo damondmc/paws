@@ -126,14 +126,14 @@ class WorkflowManager:
                 
         return arg_list
 
-    def make_search_dag(self, task_name, freq, param_chunks, num_top_list, stage, freq_deriv_order, n_seg,
+    def make_search_dag(self, task_name, freq, params, num_top_list, stage, freq_deriv_order, n_seg,
                         sft_files, request_memory='18GB', request_disk='5GB', request_cpu=1, 
                         use_osg=False, use_osdf=False, metric='None', exe=None, image=None):
         """
         Creates the DAG and SUB files for the Search stage (Weave).
         """
         t0 = time.time()
-        print(f"Generating SEARCH DAG for {task_name} at {freq} Hz...")
+        print(f"Generating SEARCH DAG for {task_name}...")
 
         if use_osdf and not use_osg:
             print('Warning: SFTs from OSDF requested but not using OSG resources.')
@@ -157,13 +157,13 @@ class WorkflowManager:
         
         write_search_subfile(
             filename=str(sub_file_path), executable_path=str(exe), transfer_executable=False, 
-            output=str(cr_files[0]), error_path=str(cr_files[1]), log_path=str(cr_files[2]), 
+            output_path=str(cr_files[0]), error_path=str(cr_files[1]), log_path=str(cr_files[2]), 
             arg_list_string=arg_string, accounting_group=self.config['acc_group'], user=self.config['user'],
             request_memory=request_memory, request_disk=request_disk, request_cpu=request_cpu,
             use_osg=use_osg, use_osdf=use_osdf, image=image
-        )
+        )   
     
-        for job_index, params in tqdm(enumerate(param_chunks, 1), total=param_chunks.size):
+        for job_index, params in tqdm(enumerate(params, 1), total=params.size):
             arg_list = self._search_dag_args(
                 freq, stage, params, task_name, n_seg, sft_files, job_index, use_osg, metric
             )
