@@ -26,28 +26,9 @@ class ResultAnalysisManager:
         self.target = target
         self.paths = PathManager(config, target)
         
-    def read_template_count(self, coh_day, freq, n_jobs, stage='search', freq_deriv_order=2):
-        """
-        Reads the template count from the weave output for each job in a specified frequency band.
-
-        Parameters:
-        - coh_day: int
-            The number of coherent observation days.
-        - freq: float
-            The frequency in Hz.
-        - n_jobs: int
-            The number of jobs processed.
-        - stage: str, optional
-            The current stage of the analysis.
-        - freq_deriv_order: int, optional
-            The order of the frequency derivative.
-
-        Returns:
-        - template_list: list
-            A list of template counts.
-        """
+    def read_template_count(self, taskname, freq, n_jobs, stage='search', freq_deriv_order=2):
+        """Reads the template count from the weave output for each job in a specified frequency band."""
         template_list = []
-        taskname = task_name(self.target['name'], stage, coh_day, freq_deriv_order)
         
         # Construct specific output filenames using PathManager
         crfiles = self.paths.condor_record_files(freq, taskname, stage)
@@ -58,12 +39,10 @@ class ResultAnalysisManager:
             template_list.append(read_template_count(out_file_path))
         return template_list
         
-    def get_mean2f_threshold(self, coh_day, freq, n_jobs, n_seg):
-        """
-        Calculates the Mean 2F threshold.
-        """
+    def get_mean2f_threshold(self, taskname, freq, n_jobs, n_seg):
+        """Calculates the Mean 2F threshold."""
         # Get the number of templates based on coherence time, frequency, and job count
-        n_temp = self.read_template_count(coh_day, freq, n_jobs)
+        n_temp = self.read_template_count(taskname, freq, n_jobs)
         if None in n_temp:
             print(f"Warning: Some template counts are None for {freq} Hz.")
             n_temp = [t if t is not None else 0 for t in n_temp]
@@ -72,20 +51,8 @@ class ResultAnalysisManager:
         mean2f_th = detection_stat_threshold(total_templates, n_seg)            
         return mean2f_th
 
-    def make_outlier_table(self, data, spacing, mean2f_th, toplist_limit=1000, freq_deriv_order=2):    
-        """
-        Filters data to create an outlier table.
-
-        Parameters:
-        - data: table
-            BinHDUTable containing data on mean 2F values.
-        - mean2f_th: float
-            The threshold value for the mean 2F statistic.
-        - toplist_limit: int, optional
-            Maximum number of top outliers to be returned.
-        - freq_deriv_order: int, optional
-            Specifies the frequency derivative order.
-        """
+    def make_outlier_table(self, data, spacing, mean2f_th, toplist_limit=1000):    
+        """Filters data to create an outlier table."""
         # Read and limit the data to the top entries
         data = data[:toplist_limit]
         
@@ -95,24 +62,14 @@ class ResultAnalysisManager:
         data.add_column(mean2f_th * np.ones(len(data)), name='mean2F threshold')
     
         # Get parameter names (e.g., ['f0', 'f1dot', ...])
-        _, deriv_params = phase_param_name(freq_deriv_order)
+        _, deriv_params = phase_param_name(len(spacing)-1)
         
         for param in deriv_params:
             data.add_column(spacing[param] * np.ones(len(data)), name=param) 
         return data
 
-    def make_injection_table(self, inj_param, search_param, freq_deriv_order):   
-        """
-        Creates a table comparing injections with search results.
-
-        Parameters:
-        - inj_param: Table
-            BinHDUTable containing injection data.
-        - search_param: Table
-            A table of search results.
-        - freq_deriv_order: int
-            The order of frequency derivative to consider.
-        """
+    def make_injection_table(self, inj_param, search_param):   
+        """Creates a table comparing injections with search results."""
         inj_param = Table(inj_param)   
         
         # Calculate h0 from aPlus and aCross
@@ -128,13 +85,9 @@ class ResultAnalysisManager:
 
         return search_param, inj_param
     
-    def _make_search_outlier(self, coh_day, freq, mean2f_th, n_jobs, num_top_list_limit=1000, 
+    def _make_search_outlier(self, taskname, freq, mean2f_th, n_jobs, num_top_list_limit=1000, 
                              stage='search', freq_deriv_order=2, cluster=False, work_in_local_dir=False):
-        """
-        Internal core function to read job outputs, filter outliers, and write the combined FITS file.
-        """      
-        taskname = task_name(self.target['name'], stage, coh_day, freq_deriv_order)
-         
+        """Internal core function to read job outputs, filter outliers, and write the combined FITS file."""      
         outlier_table_list = []
         # Info table to track stats per job
         info_data = np.recarray((n_jobs,), dtype=[(key, '>f8') for key in ['freq', 'jobIndex', 'outliers', 'saturated']]) 
@@ -152,7 +105,7 @@ class ResultAnalysisManager:
                 spacing = get_spacing(weave_file_path, freq_deriv_order)
                 
                 # 4. Filter Outliers
-                _outlier = self.make_outlier_table(weave_data, spacing, mean2f_th, num_top_list_limit, freq_deriv_order)  
+                _outlier = self.make_outlier_table(weave_data, spacing, mean2f_th, num_top_list_limit)  
 
                 # 5. Check Saturation
                 if len(_outlier) >= num_top_list_limit:
@@ -234,14 +187,14 @@ class ResultAnalysisManager:
         else:
             return outlier_file_path 
 
-    def make_search_outlier(self, coh_day, freq, mean2f_th, n_jobs, num_top_list=1000, 
+    def make_search_outlier(self, taskname, freq, mean2f_th, n_jobs, num_top_list=1000, 
                             stage='search', freq_deriv_order=2, cluster=False, work_in_local_dir=False):
         """
         Public wrapper to write search results.
 
         Parameters:
-        - cohDay: int
-            The number of coherent observation days for the search, used in time setup and threshold calculations.
+        - taskname: str
+            The name of the task for the search, used in naming and organizing output files.
 
         - freq: int
             The frequency value for the 1Hz band being processed.
@@ -265,17 +218,14 @@ class ResultAnalysisManager:
             If True, stores output files in the local directory. This option might be useful for local testing.
         """ 
         
-        outlier_file_path = self._make_search_outlier(coh_day, freq, mean2f_th, n_jobs, num_top_list, 
+        outlier_file_path = self._make_search_outlier(taskname, freq, mean2f_th, n_jobs, num_top_list, 
                                                       stage, freq_deriv_order, cluster, work_in_local_dir)
         print('Finish writing search result for {0} Hz'.format(freq))
         return outlier_file_path 
     
-    def _make_search_outlier_from_saturated_band(self, coh_day, freq, mean2f_th, job_index, 
+    def _make_search_outlier_from_saturated_band(self, taskname, freq, mean2f_th, job_index, 
                                                  num_top_list_limit=1, stage='search', freq_deriv_order=2, work_in_local_dir=False):
-        """
-        Writes results specifically for bands that were saturated in a previous pass.
-        """      
-        taskname = task_name(self.target['name'], stage, coh_day, freq_deriv_order)
+        """Writes results specifically for bands that were saturated in a previous pass."""      
         outlier_table_list = []
     
         for idx in tqdm(job_index, desc="Processing Sat Bands"):
@@ -286,7 +236,7 @@ class ResultAnalysisManager:
             try:
                 weave_data = fits.getdata(weave_file_path, 1)
                 spacing = get_spacing(weave_file_path, freq_deriv_order)
-                _outlier = self.make_outlier_table(weave_data, spacing, mean2f_th, num_top_list_limit, freq_deriv_order)  
+                _outlier = self.make_outlier_table(weave_data, spacing, mean2f_th, num_top_list_limit)  
                 outlier_table_list.append(_outlier)
             except FileNotFoundError:
                 print(f"File missing for sat band job {idx}")
@@ -302,7 +252,7 @@ class ResultAnalysisManager:
         outlier_hdul = fits.HDUList([primary_hdu, outlier_hdu])
         
         # Note: changing taskName for filename generation to indicate SatBand
-        taskname = task_name(self.target['name'], stage+'SatBand', coh_day, freq_deriv_order)
+        taskname = taskname + '_satband'
         outlier_file_path = self.paths.outlier_file(freq, taskname, stage, cluster=False)
         
         if work_in_local_dir:
@@ -313,14 +263,14 @@ class ResultAnalysisManager:
        
         return outlier_file_path 
    
-    def make_search_outlier_from_saturated_band(self, coh_day, freq, mean2f_th, job_index, 
+    def make_search_outlier_from_saturated_band(self, taskname, freq, mean2f_th, job_index, 
                                                 num_top_list=1, stage='search', freq_deriv_order=2, work_in_local_dir=False):
         """
         Public wrapper for saturated band results.
 
         Parameters:
-        - cohDay: int
-            The number of coherent observation days for the search, used in time setup and threshold calculations.
+        - taskname: str
+            The name of the task, used for naming and organizing output files.
 
         - freq: int
             The frequency value for the 1Hz band being processed.
@@ -344,7 +294,7 @@ class ResultAnalysisManager:
             If True, stores output files in the local directory. This option might be useful for local testing.
         """ 
 
-        outlier_file_path = self._make_search_outlier_from_saturated_band(coh_day, freq, mean2f_th, job_index, 
+        outlier_file_path = self._make_search_outlier_from_saturated_band(taskname, freq, mean2f_th, job_index, 
                                                                           num_top_list, stage, freq_deriv_order, work_in_local_dir)
         print('Finish writing search result for {0} Hz'.format(freq))
         return outlier_file_path
@@ -353,12 +303,9 @@ class ResultAnalysisManager:
     # Injection & Follow-up Methods
     # --------------------------------------------------------------------------
 
-    def _make_injection_outlier(self, coh_day, freq, mean2f_th, n_jobs, num_top_list_limit=1000, 
+    def _make_injection_outlier(self, taskname, freq, mean2f_th, n_jobs, num_top_list_limit=1000, 
                                 stage='search', freq_deriv_order=2, work_in_local_dir=False, cluster=False):
-        """
-        Writes the injection results from the Weave output for a given frequency.
-        """
-        taskname = task_name(self.target['name'], stage, coh_day, freq_deriv_order)
+        """Writes the injection results from the Weave output for a given frequency."""
         outlier_table_list = []
         inj_table_list = []
         info_data = np.recarray((n_jobs,), dtype=[(key, '>f8') for key in ['freq', 'jobIndex', 'outliers']]) 
@@ -377,10 +324,10 @@ class ResultAnalysisManager:
                 spacing = get_spacing(weave_file_path, freq_deriv_order)
                 
                 # Filter outliers
-                _outlier = self.make_outlier_table(weave_data, spacing, mean2f_th, num_top_list_limit, freq_deriv_order)  
+                _outlier = self.make_outlier_table(weave_data, spacing, mean2f_th, num_top_list_limit)  
                 
                 # Match injections
-                _outlier, _inj_param = self.make_injection_table(inj_data, _outlier, freq_deriv_order)
+                _outlier, _inj_param = self.make_injection_table(inj_data, _outlier)
                 
                 outlier_table_list.append(_outlier)
                 if len(_outlier) > 0:
@@ -459,14 +406,14 @@ class ResultAnalysisManager:
             
         return outlier_file_path 
 
-    def make_injection_outlier(self, coh_day, freq, mean2f_th, n_jobs, num_top_list=1000, 
+    def make_injection_outlier(self, taskname, freq, mean2f_th, n_jobs, num_top_list=1000, 
                                stage='search', freq_deriv_order=2, work_in_local_dir=False, cluster=False):
         """
         Public wrapper to write injection-search results.
 
         Parameters:
-        - coh_day: int
-            The coherence day for the analysis.
+        - taskname: str
+            The name of the task for the search, used in naming and organizing output files.
         - freq: float
             The frequency in Hz for which results are being written.
         - mean2f_th: numpy.ndarray
@@ -485,19 +432,16 @@ class ResultAnalysisManager:
             If True, clusters outliers to consolidate similar results.
             
         """
-        outlier_file_path = self._make_injection_outlier(coh_day, freq, mean2f_th, n_jobs, num_top_list, 
+        outlier_file_path = self._make_injection_outlier(taskname, freq, mean2f_th, n_jobs, num_top_list, 
                                                          stage, freq_deriv_order, work_in_local_dir, cluster)
         print('Finish writing injection result for {0} Hz'.format(freq))
         return outlier_file_path
 
-    def _make_followup_outlier(self, coh_day, freq, mean2f_th, n_jobs, num_top_list_limit=1000, 
+    def _make_followup_outlier(self, taskname, freq, mean2f_th, n_jobs, num_top_list_limit=1000, 
                                stage='search', freq_deriv_order=2, work_in_local_dir=True, inj=False, cluster=False,
                                chunk_index=0, chunk_size=1):
-        """
-        Writes the follow-up results for injections at a given frequency, supporting chunking.
-        """
-        taskname = task_name(self.target['name'], stage, coh_day, freq_deriv_order)
-    
+        """Writes the follow-up results for injections at a given frequency, supporting chunking."""
+        
         outlier_table_list = []
         inj_table_list = []
         info_data = np.recarray((n_jobs,), dtype=[(key, '>f8') for key in ['freq', 'jobIndex', 'outliers']]) 
@@ -517,11 +461,11 @@ class ResultAnalysisManager:
                 spacing = get_spacing(weave_file_path, freq_deriv_order)
                 
                 # Note: mean2f_th is an array here, indexed by i
-                _outlier = self.make_outlier_table(weave_data, spacing, mean2f_th[i], num_top_list_limit, freq_deriv_order)
+                _outlier = self.make_outlier_table(weave_data, spacing, mean2f_th[i], num_top_list_limit)
                 
                 if inj:
                     inj_param = fits.getdata(weave_file_path, 2)
-                    _outlier, inj_param = self.make_injection_table(inj_param, _outlier, freq_deriv_order)
+                    _outlier, inj_param = self.make_injection_table(inj_param, _outlier)
                     
                 if len(_outlier) > 0:
                     outlier_table_list.append(_outlier)
@@ -608,8 +552,8 @@ class ResultAnalysisManager:
             
         return outlier_file_path 
     
-    def make_followup_outlier(self, new_coh_day, freq, old_mean2f, num_top_list=1000, 
-                              new_stage='followUp-1', new_freq_deriv_order=2, ratio=0, 
+    def make_followup_outlier(self, taskname, freq, mean2f_th, num_top_list=1000, 
+                              new_stage='followUp-1', new_freq_deriv_order=2, 
                               work_in_local_dir=True, inj=False, cluster=False,
                               chunk_index=0, chunk_size=1, chunk_count=None):
         """
@@ -643,8 +587,7 @@ class ResultAnalysisManager:
         - inj: bool, optional
             If True, includes injections in the follow-up result. Default is False
         """
-        mean2f_th = old_mean2f * ratio
-        print(f'Follow-up Ratio: {ratio}')
+        print(f'Follow-up F-statistic threshold: {mean2f_th}')
         
         if chunk_count is not None:
             # Slice the threshold array for this specific chunk
@@ -652,7 +595,7 @@ class ResultAnalysisManager:
             
         n_jobs = mean2f_th.size
         
-        outlier_file_path = self._make_followup_outlier(new_coh_day, freq, mean2f_th, n_jobs, num_top_list, 
+        outlier_file_path = self._make_followup_outlier(taskname, freq, mean2f_th, n_jobs, num_top_list, 
                                                         new_stage, new_freq_deriv_order, 
                                                         work_in_local_dir, inj, cluster, 
                                                         chunk_index=chunk_index, chunk_size=chunk_size)
@@ -661,21 +604,19 @@ class ResultAnalysisManager:
         return outlier_file_path
 
 
-    def ensemble_outlier_chunk(self, chunk_count, coh_day, freq, stage, freq_deriv_order, cluster, work_in_local_dir):
+    def ensemble_outlier_chunk(self, chunk_count, taskname, freq, stage, cluster, work_in_local_dir):
         """
         Combines outlier results from multiple chunks into a single output file.
 
         Parameters:
         - chunk_count: int
             The number of chunks to process.
-        - coh_day: int
-            The number of coherent observation days used in the analysis.
+        - taskname: str
+            The name of the task.
         - freq: float
             The frequency in Hz.
         - stage: str
             The current stage of the analysis.
-        - freq_deriv_order: int
-            The order of the frequency derivative.
         - cluster: bool
             If True, indicates that clustering results should be included.
         - work_in_local_dir: bool
@@ -685,7 +626,6 @@ class ResultAnalysisManager:
         - outlier_file_path: str
             The path to the output file containing the combined outlier results.
         """
-        taskname = task_name(self.target['name'], stage, coh_day, freq_deriv_order)
         outlier_file_path = self.paths.outlier_file(freq, taskname, stage, cluster=cluster)
         
         if work_in_local_dir:
@@ -732,32 +672,10 @@ class ResultAnalysisManager:
         outlier_hdul.writeto(outlier_file_path, overwrite=True)
         return outlier_file_path
 
-    def ensemble_followup_result(self, stage, inj_stage, outlier_file_path_list, inj_outlier_file_path_list, 
+    def ensemble_followup_result(self, freq, taskname, stage, inj_stage, outlier_file_path_list, inj_outlier_file_path_list, 
                                  mean2f_ratio_list, num_top_list_to_follow_up_list,
-                                 freq, final_stage, taskname, work_in_local_dir=False, cluster=False):
-        """
-        Combines results from multiple follow-up stages into one summary FITS file.
-
-        Parameters:
-        - outlier_file_path_list: list of str
-            List of file paths to outlier files from multiple follow-up stages.
-        - inj_outlier_file_path_list: list of str
-            List of file paths to injection outlier files.
-        - mean2f_ratio_list: list of float
-            List of mean 2F ratio values for each stage.
-        - num_top_list_to_follow_up_list: list of int
-            List of top limit counts for follow up.
-        - freq: float
-            The frequency of interest.
-        - final_stage: str
-            Label for the final processing stage.
-        - taskname: str
-            Name of the task associated with this process.
-        - work_in_local_dir: bool, optional
-            Whether to save output files to the local directory.
-        - cluster: bool, optional
-            Determines whether clustering is applied.
-        """
+                                 final_stage, work_in_local_dir=False, cluster=False):
+        """Combines results from multiple follow-up stages into one summary FITS file."""
         n_inj_table = len(inj_outlier_file_path_list)
         n_out_table = len(outlier_file_path_list)
         

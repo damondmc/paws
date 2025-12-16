@@ -38,8 +38,7 @@ def search_job(target, config, freq_deriv_order, n_seg, params, num_top_list, sf
         f"--delta={target['delta']}"
     ]
 
-    # Add coherence mismatch if not observing for the full duration
-    # Logic: if n_seg > 1, we are splitting the observation, so mismatch is allowed
+    # Add coherence mismatch if the coherence time is not equal to the total observation time
     if n_seg > 1:
         cmd_parts.append(f"--coh-max-mismatch={config['coh_mm']}")
 
@@ -114,26 +113,16 @@ def determine_efficiency(paths, config, sft_files, search_params_chunk, inj_para
     # Prepare File Paths
     if work_in_local_dir:
         job_list = [
-            (Path(paths.weave_output_file(freq, task_name_str, i, stage)).name, p) 
+            (Path(paths.weave_output_file(freq, taskname, i, stage)).name, p) 
             for i, p in enumerate(search_params_chunk, 1)
         ]
-        metric_file = Path(paths.weave_setup_file_from_param(obs_day, coh_day, freq_deriv_order)).name
     else:
         job_list = [
-            (str(paths.weave_output_file(freq, task_name_str, i, stage)), p) 
+            (str(paths.weave_output_file(freq, taskname, i, stage)), p) 
             for i, p in enumerate(search_params_chunk, 1)
         ]
-        metric_file = str(paths.weave_setup_file_from_param(obs_day, coh_day, freq_deriv_order))
-
-    weave_exe = str(paths.weave_executable)
     
-    # Calculate n_seg (Number of segments)
-    # If coh_day equals obs_day, we have 1 segment. Otherwise obs_day / coh_day
-    n_seg = int(obs_day / coh_day) if coh_day > 0 else 1
-
     # Run Parallel Jobs
-    # Note: We must construct the tuple EXACTLY as injection_job expects it:
-    # (target, config, freq_deriv_order, n_seg, params, num_top_list, inj_row, sft_files, metric_file, extra_stats, weave_exe)
     with Pool(processes=num_cpus) as pool:
         results = pool.starmap(injection_job, [
             (target, config, freq_deriv_order, n_seg, params, num_top_list, inj, sft_files, metric_file, 
@@ -141,19 +130,9 @@ def determine_efficiency(paths, config, sft_files, search_params_chunk, inj_para
             for params, inj in zip(job_list, inj_params_chunk)
         ])
 
-    # Analysis
-    # Get threshold from the search stage outlier file
-    # Ensure coh_day and freq are correct types for task_name
-    search_task_name = task_name(target['name'], 'search', coh_day, freq_deriv_order, int(freq))
-    search_outlier_file = paths.outlier_file(freq, search_task_name, 'search', cluster=cluster)
-    
-    if work_in_local_dir:
-        search_outlier_file = Path(search_outlier_file).name
-        
-    mean2F_th = fits.getheader(search_outlier_file)['HIERARCH mean2F_th']
-    
+    # Analysis    
     # Delegate writing results to ResultManager
-    outlier_file_path = result_manager.write_injection_result(
+    outlier_file_path = result_manager.make_injection_outlier(
         coh_day, freq, mean2F_th, n_inj, num_top_list=num_top_list, 
         stage=stage, freq_deriv_order=freq_deriv_order, 
         cluster=cluster, work_in_local_dir=work_in_local_dir
@@ -163,9 +142,9 @@ def determine_efficiency(paths, config, sft_files, search_params_chunk, inj_para
         delete_files(results)
 
     # Calculate Efficiency
-    nout = fits.getdata(outlier_file_path, 1).size
-    p = nout / n_inj
-    print(f'{p*100:.2f}% ({nout}/{n_inj}) above mean2F threshold. Saved to {outlier_file_path}.')
+    n_outlier = fits.getdata(outlier_file_path, 1).size
+    p = n_outlier / n_inj
+    print(f'{p*100:.2f}% ({n_outlier}/{n_inj}) above mean2F threshold. Saved to {outlier_file_path}.')
     
     return p, outlier_file_path
 
