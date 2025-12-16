@@ -14,7 +14,7 @@ class ResultAnalysisManager:
     """
     Manages the collection, filtering, and storage of search results.
     """
-    def __init__(self, target, config):
+    def __init__(self, config, target):
         """
         Initialize the ResultManager.
 
@@ -62,7 +62,7 @@ class ResultAnalysisManager:
         data.add_column(mean2f_th * np.ones(len(data)), name='mean2F threshold')
     
         # Get parameter names (e.g., ['f0', 'f1dot', ...])
-        _, deriv_params = phase_param_name(len(spacing)-1)
+        _, deriv_params = phase_param_name(len(spacing) - 1)
         
         for param in deriv_params:
             data.add_column(spacing[param] * np.ones(len(data)), name=param) 

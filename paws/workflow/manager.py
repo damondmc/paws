@@ -14,7 +14,7 @@ class WorkflowManager:
     analysis stages (Search, Follow-up, Upper Limit).
     """
 
-    def __init__(self, target, config):
+    def __init__(self, config, target):
         """
         Initialize the WorkflowManager.
 
@@ -22,8 +22,8 @@ class WorkflowManager:
             target (dict): Target object containing astronomical target info.
             config (dict): Configuration dictionary (user, accounting, etc.).
         """
-        self.target = target
         self.config = config
+        self.target = target
         self.paths = PathManager(config, target)
         self.obs_day = config.get('obs_day', 0) # Assumes config has obs_day, or defaults to 0
 
@@ -126,8 +126,8 @@ class WorkflowManager:
         return arg_list
 
     def make_search_dag(self, task_name, freq, params, num_top_list, stage, freq_deriv_order, n_seg,
-                        sft_files, request_memory='18GB', request_disk='5GB', request_cpu=1, 
-                        use_osg=False, use_osdf=False, metric='None', exe=None, image=None):
+                        sft_files, metric_file, request_memory='18GB', request_disk='5GB', request_cpu=1, 
+                        use_osg=False, use_osdf=False, exe=None, image=None):
         """
         Creates the DAG and SUB files for the Search stage (Weave).
         """

@@ -3,7 +3,7 @@ from astropy.io import fits
 from astropy.table import Table
 
 from paws.definitions import inj_param_name, phase_param_name
-from . import models as fr
+from .models import f1_broad_range, f2_broad_range, f3_value, f4_value
 
 class InjectionParamGenerator:
     def __init__(self, target, ref_time, f0_band=0.1):
@@ -11,6 +11,12 @@ class InjectionParamGenerator:
         self.ref_time = ref_time
         self.f0_band = f0_band
         self.inj_col_names = inj_param_name()
+
+        self.tau = target['age'] * 86400 * 365.25  # Convert to seconds
+        self.alpha = target['alpha']
+        self.dalpha = target['dalpha']
+        self.delta = target['delta']
+        self.ddelta = target['ddelta']
 
     @staticmethod
     def sky_sampler(target_ra, target_dec, sky_uncertainty, n_samples):
@@ -80,7 +86,7 @@ class InjectionParamGenerator:
         inj_data = Table(np.zeros((n_inj, len(col_names))), names=col_names)
 
         # 1. Sky Location
-        alpha, delta = self.sky_sampler(self.target.alpha, self.target.delta, sky_uncertainty, n_inj)
+        alpha, delta = self.sky_sampler(self.alpha, self.delta, sky_uncertainty, n_inj)
         inj_data['Alpha'] = alpha
         inj_data['Delta'] = delta
 
@@ -97,20 +103,20 @@ class InjectionParamGenerator:
         inj_data['Freq'] = f0
         
         if inj_freq_deriv_order >= 1:
-            f1_min, f1_max, _ = fr.f1BroadRange(f0, 0, self.target.tau)
+            f1_min, f1_max, _ = f1_broad_range(f0, 0, self.tau)
             f1 = np.random.uniform(f1_min, f1_max)
             inj_data['f1dot'] = f1
             
         if inj_freq_deriv_order >= 2:
-            f2_min, f2_max, _ = fr.f2BroadRange(f0, 0, f1, f1)
+            f2_min, f2_max, _ = f2_broad_range(f0, 0, f1, f1)
             f2 = np.random.uniform(f2_min, f2_max)
             inj_data['f2dot'] = f2
         
         if inj_freq_deriv_order >= 3:
-            inj_data['f3dot'] = fr.f3Value(f0, f1, f2)
+            inj_data['f3dot'] = f3_value(f0, f1, f2)
 
         if inj_freq_deriv_order >= 4:
-            inj_data['f4dot'] = fr.f4Value(f0, f1, f2)
+            inj_data['f4dot'] = f4_value(f0, f1, f2)
             
         return fits.BinTableHDU(inj_data)
 
@@ -158,10 +164,10 @@ class InjectionParamGenerator:
             search_range['df4dot'] = 2 * n_spacing * df4
 
         # 2. Sky
-        search_range['alpha'] = self.target.alpha
-        search_range['dalpha'] = self.target.dalpha
-        search_range['delta'] = self.target.delta
-        search_range['ddelta'] = self.target.ddelta
+        search_range['alpha'] = self.alpha
+        search_range['dalpha'] = self.dalpha
+        search_range['delta'] = self.delta
+        search_range['ddelta'] = self.ddelta
 
         return fits.BinTableHDU(search_range)
 
@@ -173,6 +179,7 @@ class InjectionParamGenerator:
         :param non_sat_bands: Array of non-saturated band frequencies.
         :param spacing_info: Path to FITS file with spacing info OR a dictionary.
         """
+
         if freq_deriv_order > 4:
             print('Error: frequency derivative order larger than 4.')
         if inj_freq_deriv_order > 4:

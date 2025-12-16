@@ -5,9 +5,9 @@ from itertools import islice
 from astropy.io import fits
 
 from paws.io import make_dir
-from paws.definitions import phase_param_name, task_name
-from paws.filepaths import PathsManager
-from paws.analysis import ResultAnalysisManager 
+from paws.definitions import phase_param_name
+from paws.filepaths import PathManager
+from paws.analysis.outlier import ResultAnalysisManager 
 
 def delete_files(result_file_list):
     """Delete files to release disk storage."""
@@ -15,7 +15,7 @@ def delete_files(result_file_list):
         Path(f).unlink(missing_ok=True)
     # print(f'Deleted {len(result_file_list)} weave result files.\n')
 
-def search_job(target, config, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
+def search_job(config, target, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
                extra_stats, weave_exe, search_data):
     """
     Worker function to run a single WEAVE search job.
@@ -56,7 +56,7 @@ def search_job(target, config, freq_deriv_order, n_seg, num_top_list, sft_files,
     subprocess.run(command, shell=True, capture_output=True, text=True)
     return result_file
 
-def injection_job(target, config, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
+def injection_job(config, target, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
                   extra_stats, weave_exe, search_data, injection_data):
     """
     Worker function to run a single WEAVE injection job.
@@ -103,14 +103,14 @@ def injection_job(target, config, freq_deriv_order, n_seg, num_top_list, sft_fil
     subprocess.run(command, shell=True, capture_output=True, text=True)
     return result_file
 
-def determine_efficiency(taskname, stage, target, config, freq, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
+def determine_efficiency(taskname, stage, config, target, freq, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
                          extra_stats, weave_exe, search_data, injection_data, mean2f_th, n_cpu,
                          cluster, work_in_local_dir, save_intermediate=False):
     """
     Runs injections in parallel and calculates detection efficiency.
     """
-    paths = PathsManager(target, config)
-    result_manager = ResultAnalysisManager(target, config)
+    paths = PathManager(config=config, target=target)
+    result_manager = ResultAnalysisManager(config=config, target=target)
 
     # Prepare File Paths
     if work_in_local_dir:
@@ -127,7 +127,7 @@ def determine_efficiency(taskname, stage, target, config, freq, freq_deriv_order
     # Run Parallel Jobs
     with Pool(processes=n_cpu) as pool:
         results = pool.starmap(injection_job, [
-            (target, config, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
+            (config, target, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
              extra_stats, weave_exe, jd, inj) 
             for jd, inj in zip(job_data, injection_data)
         ])

@@ -7,9 +7,9 @@ class SigmoidFitter:
     """
     Handles the sigmoid curve fitting to determine upper limits (h95).
     """
-    def __init__(self, target, nInj=100, nAmp=1):
+    def __init__(self, target, n_inj=100, n_amp=1):
         self.target = target
-        self.injPerPoint = int(nInj / nAmp)
+        self.injPerPoint = int(n_inj / n_amp)
         self.popt = None
         self.pcov = None
         self.h0_mean = 0
@@ -51,8 +51,8 @@ class SigmoidFitter:
         h0_arr = np.array(h0_list)
         p_arr = np.array(efficiency_list)
 
-        if not np.any((p_arr > 0.8) & (p_arr < 0.96)):
-            warnings.warn("Warning: Data lacks points in the critical 80%-96% efficiency range.")
+        # if not np.any((p_arr > 0.8) & (p_arr < 0.96)):
+        #     warnings.warn("Warning: Data lacks points in the critical 80%-96% efficiency range.")
 
         err = self.binomial_error(p_arr, self.injPerPoint)
         x_norm = self._rescale_h0(h0_arr, h0_arr)
