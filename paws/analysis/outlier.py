@@ -304,7 +304,7 @@ class ResultAnalysisManager:
     # --------------------------------------------------------------------------
 
     def _make_injection_outlier(self, taskname, freq, mean2f_th, n_jobs, num_top_list_limit=1000, 
-                                stage='search', freq_deriv_order=2, work_in_local_dir=False, cluster=False):
+                                stage='search', freq_deriv_order=2, cluster=False, work_in_local_dir=False):
         """Writes the injection results from the Weave output for a given frequency."""
         outlier_table_list = []
         inj_table_list = []
@@ -407,7 +407,7 @@ class ResultAnalysisManager:
         return outlier_file_path 
 
     def make_injection_outlier(self, taskname, freq, mean2f_th, n_jobs, num_top_list=1000, 
-                               stage='search', freq_deriv_order=2, work_in_local_dir=False, cluster=False):
+                               stage='search', freq_deriv_order=2, cluster=False, work_in_local_dir=False):
         """
         Public wrapper to write injection-search results.
 
@@ -426,19 +426,19 @@ class ResultAnalysisManager:
             The stage of the analysis.
         - freq_deriv_order: int, optional (default=2)
             The order of frequency derivative.
-        - work_in_local_dir: bool, optional (default=False)
-            If True, stores output files in the local directory.
         - cluster: bool, optional (default=False)
             If True, clusters outliers to consolidate similar results.
-            
+        - work_in_local_dir: bool, optional (default=False)
+            If True, stores output files in the local directory.
         """
         outlier_file_path = self._make_injection_outlier(taskname, freq, mean2f_th, n_jobs, num_top_list, 
-                                                         stage, freq_deriv_order, work_in_local_dir, cluster)
+                                                         stage, freq_deriv_order, cluster, work_in_local_dir)
         print('Finish writing injection result for {0} Hz'.format(freq))
         return outlier_file_path
 
     def _make_followup_outlier(self, taskname, freq, mean2f_th, n_jobs, num_top_list_limit=1000, 
-                               stage='search', freq_deriv_order=2, work_in_local_dir=True, inj=False, cluster=False,
+                               stage='search', freq_deriv_order=2, 
+                               cluster=False, work_in_local_dir=True, inj=False,
                                chunk_index=0, chunk_size=1):
         """Writes the follow-up results for injections at a given frequency, supporting chunking."""
         
@@ -554,7 +554,7 @@ class ResultAnalysisManager:
     
     def make_followup_outlier(self, taskname, freq, mean2f_th, num_top_list=1000, 
                               new_stage='followUp-1', new_freq_deriv_order=2, 
-                              work_in_local_dir=True, inj=False, cluster=False,
+                              cluster=False, work_in_local_dir=True, inj=False,
                               chunk_index=0, chunk_size=1, chunk_count=None):
         """
         Public wrapper to write follow-up results.
@@ -597,7 +597,7 @@ class ResultAnalysisManager:
         
         outlier_file_path = self._make_followup_outlier(taskname, freq, mean2f_th, n_jobs, num_top_list, 
                                                         new_stage, new_freq_deriv_order, 
-                                                        work_in_local_dir, inj, cluster, 
+                                                        cluster, work_in_local_dir, inj, 
                                                         chunk_index=chunk_index, chunk_size=chunk_size)
 
         print(f'Finish writing followUp result for {freq} Hz')
@@ -674,7 +674,7 @@ class ResultAnalysisManager:
 
     def ensemble_followup_result(self, freq, taskname, stage, inj_stage, outlier_file_path_list, inj_outlier_file_path_list, 
                                  mean2f_ratio_list, num_top_list_to_follow_up_list,
-                                 final_stage, work_in_local_dir=False, cluster=False):
+                                 final_stage, cluster=False, work_in_local_dir=False):
         """Combines results from multiple follow-up stages into one summary FITS file."""
         n_inj_table = len(inj_outlier_file_path_list)
         n_out_table = len(outlier_file_path_list)

@@ -68,7 +68,7 @@ class SigmoidFitter:
     def get_h_percentile(self, percentile=0.95):
         """
         Calculates the h0 value at a specific detection probability (e.g., 95%).
-        Returns: (h_value, relative_error)
+        Returns: (h_value, h_error)
         """
         if self.popt is None:
             raise ValueError("Model not fitted. Run fit() first.")
@@ -90,7 +90,7 @@ class SigmoidFitter:
         h_val = self._inv_rescale_h0(x)
         h_err = dx * self.h0_max # Scale error back to physical units
         
-        return h_val, h_err / h_val
+        return h_val, h_err 
 
     def plot(self, h0_list, p_list, save_path=None):
         """Generates the Upper Limit plot."""
