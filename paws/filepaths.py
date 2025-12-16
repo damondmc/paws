@@ -96,19 +96,19 @@ class PathManager:
         filename = f"{self.target_name}_{stage}_{f_min}-{f_max}Hz_dag.txt"
         return self.home_dir / 'dagJob' / filename
 
-    def dag_file(self, freq, task_name, stage):
+    def dag_file(self, freq, taskname, stage):
         """Path to the specific .dag file."""
-        return self.home_dir / 'condorFiles' / stage / self.target_name / str(freq) / f"{task_name}_{freq}Hz.dag"
+        return self.home_dir / 'condorFiles' / stage / self.target_name / str(freq) / f"{taskname}.dag"
 
-    def condor_sub_file(self, freq, task_name, stage):
+    def condor_sub_file(self, freq, taskname, stage):
         """Path to the .sub file."""
-        return self.home_dir / 'condorFiles' / stage / self.target_name / str(freq) / f"{task_name}_{freq}Hz.sub"
+        return self.home_dir / 'condorFiles' / stage / self.target_name / str(freq) / f"{taskname}.sub"
     
     def submit_condor_sub_file(self, freq, stage):
         """Path to the submit-wrapper .sub file."""
         return self.home_dir / 'condorFiles' / stage / self.target_name / str(freq) / 'submit.sub'
 
-    def condor_record_files(self, freq, task_name, stage):
+    def condor_record_files(self, freq, taskname, stage):
         """
         Returns a list [Output, Error, Log] for Condor logging.
         Note: These contain $(JobID) or similar Condor variables, so they are returned as strings.
@@ -120,9 +120,9 @@ class PathManager:
         (base_dir / 'ERR').mkdir(parents=True, exist_ok=True)
         (base_dir / 'LOG').mkdir(parents=True, exist_ok=True)
 
-        out = base_dir / 'OUT' / f"{task_name}_{freq}Hz.out.$(JobID)"
-        err = base_dir / 'ERR' / f"{task_name}_{freq}Hz.err.$(JobID)"
-        log = base_dir / 'LOG' / f"{task_name}_{freq}Hz_log.txt.$(JobID)"
+        out = base_dir / 'OUT' / f"{taskname}.out.$(JobID)"
+        err = base_dir / 'ERR' / f"{taskname}.err.$(JobID)"
+        log = base_dir / 'LOG' / f"{taskname}_log.txt.$(JobID)"
         
         return [str(out), str(err), str(log)]
 
@@ -130,26 +130,26 @@ class PathManager:
     # Weave Outputs & Analysis
     # ---------------------------------------------------------
 
-    def weave_output_file(self, freq, task_name, job_index, stage):
+    def weave_output_file(self, freq, taskname, job_index, stage):
         """
         Path where Weave writes the resulting FITS file.
         Matches: /osdf/.../o4ab/results/...
         """
         # Logic: OSDFDir + 'o4ab' + results structure
         base = self.osdf_dir / 'o4ab' / 'results' / stage / self.target_name / self.sft_source / str(freq) / 'Result'
-        return base / f"{task_name}_{freq}Hz.fts.{job_index}"
+        return base / f"{taskname}.fts.{job_index}"
 
-    def outlier_file(self, freq, task_name, stage, cluster=False):
+    def outlier_file(self, freq, taskname, stage, cluster=False):
         """Path for the analyzed outlier file."""
         base = self.home_dir / 'results' / stage / self.target_name / self.sft_source / str(freq) / 'Outliers'
         
         if cluster:
-            filename = f"{task_name}_{freq}Hz_outlier_clustered.fts"
+            filename = f"{taskname}_outlier_clustered.fts"
         else:
-            filename = f"{task_name}_{freq}Hz_outlier.fts"
+            filename = f"{taskname}_outlier.fts"
             
         return base / filename
 
-    def outlier_from_saturated_file(self, freq, task_name, stage):
+    def outlier_from_saturated_file(self, freq, taskname, stage):
         base = self.home_dir / 'results' / stage / self.target_name / self.sft_source / str(freq) / 'Outliers'
-        return base / f"{task_name}_{freq}Hz_loudest_outlier_from_saturated.fts"
+        return base / f"{taskname}_loudest_outlier_from_saturated.fts"
