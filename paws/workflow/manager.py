@@ -164,7 +164,7 @@ class WorkflowManager:
     
         for job_index, params in tqdm(enumerate(params, 1), total=params.size):
             arg_list = self._search_dag_args(
-                freq, stage, params, task_name, n_seg, sft_files, job_index, use_osg, metric
+                freq, stage, params, task_name, n_seg, sft_files, job_index, use_osg, metric_file
             )
             write_search_dagfile(str(dag_file_path), task_name, str(sub_file_path), job_index, arg_list)
 
