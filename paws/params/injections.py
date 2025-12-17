@@ -2,7 +2,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.table import Table
 
-from paws.definitions import inj_param_name, phase_param_name
+from paws.definitions import ext_param_name, phase_param_name
 from .models import f1_broad_range, f2_broad_range, f3_value, f4_value
 
 class InjectionParamGenerator:
@@ -10,7 +10,7 @@ class InjectionParamGenerator:
         self.target = target
         self.ref_time = ref_time
         self.f0_band = f0_band
-        self.inj_col_names = inj_param_name()
+        self.inj_col_names = ext_param_name()
 
         self.tau = target['age'] * 86400 * 365.25  # Convert to seconds
         self.alpha = target['alpha']
@@ -80,7 +80,7 @@ class InjectionParamGenerator:
         freq_params, _ = phase_param_name(inj_freq_deriv_order)
         
         # Create column names: Standard Inj names + Phase params (Freq, f1dot...)
-        col_names = self.inj_col_names + [p.capitalize() if p=='freq' else p for p in freq_params[1:]]
+        col_names = self.inj_col_names + [p.capitalize() if p=='freq' else p for p in freq_params]
         
         # Pre-allocate
         inj_data = Table(np.zeros((n_inj, len(col_names))), names=col_names)

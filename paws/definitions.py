@@ -6,8 +6,8 @@ def phase_param_name(order):
     freqDerivParamName = ["df", "df1dot", "df2dot", "df3dot", "df4dot"]        
     return freqParamName[:order+1], freqDerivParamName[:order+1]
 
-def inj_param_name():
-    return ["Alpha", "Delta", "refTime", "aPlus", "aCross", "psi", "Freq"]
+def ext_param_name():
+    return ["Alpha", "Delta", "refTime", "aPlus", "aCross", "psi"]
 
 def task_name(target_name, stage, cohDay, order):
     """
