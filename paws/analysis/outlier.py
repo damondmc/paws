@@ -39,10 +39,10 @@ class ResultAnalysisManager:
             template_list.append(read_template_count(out_file_path))
         return template_list
         
-    def get_mean2f_threshold(self, taskname, freq, n_jobs, n_seg):
+    def get_mean2f_threshold(self, taskname, freq, n_jobs, n_seg, stage='search'):
         """Calculates the Mean 2F threshold."""
         # Get the number of templates based on coherence time, frequency, and job count
-        n_temp = self.read_template_count(taskname, freq, n_jobs)
+        n_temp = self.read_template_count(taskname, freq, n_jobs, stage=stage)
         if None in n_temp:
             print(f"Warning: Some template counts are None for {freq} Hz.")
             n_temp = [t if t is not None else 0 for t in n_temp]

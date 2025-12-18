@@ -137,7 +137,7 @@ class InjectionParamGenerator:
         # f0
         df = spacing['df']        
         search_range['freq'] = inj_data['Freq'] - n_spacing * df
-        search_range['dfreq'] = 2 * n_spacing * df
+        search_range['df'] = 2 * n_spacing * df
         
         # f1
         if freq_deriv_order >= 1:
