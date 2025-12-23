@@ -240,100 +240,68 @@ def determine_efficiency(taskname, stage, config, target, freq, freq_deriv_order
     
 #     return outlier_file_path, inj_result_file_list
 
-# def chunked_iterable(iterable, size):
-#     it = iter(iterable)
-#     while True:
-#         chunk = list(islice(it, size))
-#         if not chunk:
-#             break
-#         yield chunk
+def chunked_iterable(iterable, size):
+    it = iter(iterable)
+    while True:
+        chunk = list(islice(it, size))
+        if not chunk:
+            break
+        yield chunk
 
-# def real_followup(paths, config, sp, target, obs_day, freq, sft_files, 
-#                   old_mean2F, mean2F_ratio, 
-#                   new_coh_day, new_freq_deriv_order, new_stage, 
-#                   num_top_list, extra_stats, num_cpus, 
-#                   result_manager, cluster=False, work_in_local_dir=False, 
-#                   save_intermediate=False):
-#     """
-#     Executes the 'real' (non-injection) follow-up stage.
-#     """
-#     print('Doing real follow-up...')
-     
-#     # 1. Setup Paths
-#     t_name = task_name(target['name'], new_stage, new_coh_day, new_freq_deriv_order, freq)
-#     metric_file = paths.weave_setup_file_from_param(obs_day, new_coh_day, new_freq_deriv_order)
+# def search_job(config, target, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
+#                extra_stats, weave_exe, search_data):
     
-#     if work_in_local_dir:  
-#         metric_file = Path(metric_file).name
 
-#     # 2. Prepare Job Parameters
-#     if work_in_local_dir:
-#         search_params = [
-#             (Path(paths.weave_output_file(freq, t_name, i, new_stage)).name, p) 
-#             for i, p in enumerate(sp[str(freq)].data, 1)
-#         ]
-#     else:
-#         search_params = [
-#             (str(paths.weave_output_file(freq, t_name, i, new_stage)), p) 
-#             for i, p in enumerate(sp[str(freq)].data, 1)
-#         ]
-       
-#     # 3. Setup Chunking
-#     chunk_size = 100  
-#     total_job_counts = len(search_params)
-#     chunk_count = int(np.ceil(total_job_counts / chunk_size))
-#     weave_exe = str(paths.weave_executable)
-#     n_seg = int(obs_day / new_coh_day) if new_coh_day > 0 else 1
+# def determine_efficiency(taskname, stage, config, target, freq, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
+#                          extra_stats, weave_exe, search_data, injection_data, mean2f_th, n_cpu,
+#                          cluster, work_in_local_dir, save_intermediate=False):
+
+
+def real_followup(taskname, stage, config, target, freq, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
+                  extra_stats, weave_exe, search_data, mean2f_th, n_cpu,
+                  cluster, work_in_local_dir, save_intermediate=False):
+
+    """
+    Executes the 'real' (non-injection) follow-up stage.
+    """
+    print('Doing real follow-up...')
     
-#     outlier_file_path = None
+    paths = PathManager(config=config, target=target)
+    result_manager = ResultAnalysisManager(config=config, target=target)
 
-#     print("Generated params, running Weave...")
+    # Prepare File Paths
+    if work_in_local_dir:
+        job_data = [
+            (Path(paths.weave_output_file(freq, taskname, i, stage)).name, p) 
+            for i, p in enumerate(search_data, 1)
+        ]
+    else:
+        job_data = [
+            (str(paths.weave_output_file(freq, taskname, i, stage)), p) 
+            for i, p in enumerate(search_data, 1)
+        ]
     
-#     # 4. Process Chunks
-#     with Pool(processes=num_cpus) as pool:
-        
-#         for chunk_index, chunk in enumerate(chunked_iterable(search_params, chunk_size)):
-#             print(f"Processing chunk {chunk_index + 1} out of {chunk_count}...")
-            
-#             # Run Search Jobs in Parallel
-#             # Tuple must match search_job signature:
-#             # (target, config, freq_deriv_order, n_seg, params, num_top_list, sft_files, metric_file, extra_stats, weave_exe)
-#             results = pool.starmap(search_job, [
-#                 (target, config, new_freq_deriv_order, n_seg, params, num_top_list, sft_files, metric_file, 
-#                  extra_stats, weave_exe)
-#                 for params in chunk
-#             ])
-            
-#             # Analyze Results Immediately
-#             if chunk_count == 1:
-#                 outlier_file_path = result_manager.write_follow_up_result(
-#                     old_mean2F, new_coh_day, freq, num_top_list=num_top_list, 
-#                     new_stage=new_stage, new_freq_deriv_order=new_freq_deriv_order, 
-#                     ratio=mean2F_ratio, work_in_local_dir=work_in_local_dir, 
-#                     inj=False, cluster=cluster
-#                 )
-#             else:
-#                 outlier_file_path = result_manager.write_follow_up_result(
-#                     old_mean2F, new_coh_day, freq, num_top_list=num_top_list, 
-#                     new_stage=new_stage, new_freq_deriv_order=new_freq_deriv_order, 
-#                     ratio=mean2F_ratio, work_in_local_dir=work_in_local_dir, 
-#                     inj=False, cluster=cluster,
-#                     chunk_count=chunk_count, chunk_index=chunk_index, chunk_size=chunk_size
-#                 )
-   
-#             # Cleanup Disk Space
-#             if not save_intermediate:
-#                 delete_files(results)
+    # Run Parallel Jobs
+    with Pool(processes=n_cpu) as pool:
+        results = pool.starmap(search_job, [
+            (config, target, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
+             extra_stats, weave_exe, jd) 
+            for jd in job_data
+        ])
 
-#     # 5. Final Aggregation
-#     if chunk_count != 1:
-#         outlier_file_path = result_manager.ensemble_outlier_chunk(
-#             total_job_counts, chunk_size, chunk_count, 
-#             new_coh_day, freq, new_stage, new_freq_deriv_order, 
-#             cluster, work_in_local_dir
-#         )
-            
-#     return outlier_file_path
+    # Analysis    
+    # Delegate writing results to ResultManager
+    outlier_file_path = result_manager.make_followup_outlier(
+        taskname, freq, mean2f_th, num_top_list=num_top_list, 
+        new_stage=stage, new_freq_deriv_order=freq_deriv_order, 
+        cluster=cluster, work_in_local_dir=work_in_local_dir
+    )
+
+
+    if not save_intermediate:
+        delete_files(results)
+
+    return outlier_file_path
 
 # def determine_mean2f_ratio(percentile, paths, target, freq, 
 #                            old_coh_day, old_freq_deriv_order, old_stage, 

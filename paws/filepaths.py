@@ -45,11 +45,11 @@ class PathManager:
 
     @property
     def follow_up_executable(self):
-        return self.home_dir / 'scripts/follow_up.py'
+        return self.home_dir / 'scripts/followup.py'
 
     @property
     def upper_limit_executable(self):
-        return self.home_dir / 'scripts/upper_limit.py'
+        return self.home_dir / 'scripts/upperlimit.py'
     
     @property
     def analyze_result_executable(self):

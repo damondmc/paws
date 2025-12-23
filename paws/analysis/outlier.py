@@ -1,7 +1,8 @@
 from astropy.io import fits
 from astropy.table import Table, vstack
 import numpy as np
-from tqdm import tqdm
+#from tqdm import tqdm
+from tqdm.auto import tqdm
 from pathlib import Path
 
 from paws.filepaths import PathManager
@@ -476,7 +477,8 @@ class ResultAnalysisManager:
                         
                 info_data[i] = freq, job_index, len(_outlier)
             except FileNotFoundError:
-                 info_data[i] = freq, job_index, 0
+                print(f"Warning: File not found {weave_file_path}")
+                info_data[i] = freq, job_index, 0
 
         # Combine Tables
         primary_hdu = fits.PrimaryHDU()
