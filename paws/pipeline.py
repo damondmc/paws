@@ -23,14 +23,12 @@ def search_job(config, target, freq_deriv_order, n_seg, num_top_list, sft_files,
     result_file, param_row = search_data
     make_dir([result_file])
     
-    if Path(result_file).exists():
-        return result_file
-    
-    # Construct command
+    Path(result_file).unlink(missing_ok=True)
+  
     cmd_parts = [
-        f"{weave_exe}",
+        str(weave_exe),
         f"--output-file={result_file}",
-        f"--sft-files=\"{sft_files}\"",
+        f"--sft-files={sft_files}",
         f"--setup-file={metric_file}",
         f"--semi-max-mismatch={config['semi_mm']}",
         f"--toplist-limit={num_top_list}",
@@ -39,21 +37,39 @@ def search_job(config, target, freq_deriv_order, n_seg, num_top_list, sft_files,
         f"--delta={target['delta']}"
     ]
 
-    # Add coherence mismatch if the coherence time is not equal to the total observation time
     if n_seg > 1:
         cmd_parts.append(f"--coh-max-mismatch={config['coh_mm']}")
 
-    # Add frequency/derivative parameters
     freq_names, freq_deriv_names = phase_param_name(freq_deriv_order)
     for f_name, df_name in zip(freq_names, freq_deriv_names):
         val = param_row[f_name]
         dval = param_row[df_name]
         cmd_parts.append(f"--{f_name}={val}/{dval}")
 
-    command = " ".join(cmd_parts)
+    # --- EXECUTE DIRECTLY ---
+    # shell=False: Arguments are passed directly. No shell is spawned.
+    # If weave_exe is not found, this line will raise FileNotFoundError immediately.
+    process = subprocess.run(
+        cmd_parts, 
+        shell=False, 
+        capture_output=True, 
+        text=True
+    )
 
-    # Run command
-    subprocess.run(command, shell=True, capture_output=True, text=True)
+    # --- CRASH DETECTION ---
+    if process.returncode != 0:
+        print(f"\n[CRITICAL] Job Crashed! Return Code: {process.returncode}")
+        print(f"File: {result_file}")
+        print(f"STDERR TAIL:\n{process.stderr[-1000:]}")
+        raise RuntimeError(f"WEAVE crashed with code {process.returncode}")
+
+    # --- MISSING FILE DETECTION ---
+    if not Path(result_file).exists():
+        print(f"\n[ERROR] Job finished successfully (0), but NO OUTPUT FILE: {result_file}")
+        print(f"STDOUT TAIL:\n{process.stdout[-1000:]}")
+        print(f"STDERR TAIL:\n{process.stderr[-1000:]}")
+        raise FileNotFoundError(f"WEAVE output missing: {result_file}")
+
     return result_file
 
 def injection_job(config, target, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
@@ -64,14 +80,12 @@ def injection_job(config, target, freq_deriv_order, n_seg, num_top_list, sft_fil
     result_file, param_row = search_data
     make_dir([result_file])
     
-    if Path(result_file).exists():
-        return result_file
+    Path(result_file).unlink(missing_ok=True)
     
-    # 1. Build Base Search Command
     cmd_parts = [
-        f"{weave_exe}",
+        str(weave_exe),
         f"--output-file={result_file}",
-        f"--sft-files=\"{sft_files}\"",
+        f"--sft-files={sft_files}",
         f"--setup-file={metric_file}",
         f"--semi-max-mismatch={config['semi_mm']}",
         f"--toplist-limit={num_top_list}",
@@ -89,7 +103,6 @@ def injection_job(config, target, freq_deriv_order, n_seg, num_top_list, sft_fil
         dval = param_row[df_name]
         cmd_parts.append(f"--{f_name}={val}/{dval}")
 
-    # 2. Build Injection String
     inj_str = (
         f"Alpha={injection_data['Alpha']};Delta={injection_data['Delta']};refTime={injection_data['refTime']};"
         f"aPlus={injection_data['aPlus']};aCross={injection_data['aCross']};psi={injection_data['psi']};"
@@ -97,10 +110,28 @@ def injection_job(config, target, freq_deriv_order, n_seg, num_top_list, sft_fil
         f"f3dot={injection_data['f3dot']};f4dot={injection_data['f4dot']}"
     )
     
-    cmd_parts.append(f'--injections=\"{{{inj_str}}}\"')
+    # f-string formatting: {{{ }}} becomes { content }
+    cmd_parts.append(f'--injections={{{inj_str}}}')
     
-    command = " ".join(cmd_parts)
-    subprocess.run(command, shell=True, capture_output=True, text=True)
+    # --- EXECUTE DIRECTLY ---
+    process = subprocess.run(
+        cmd_parts, 
+        shell=False, 
+        capture_output=True, 
+        text=True
+    )
+
+    if process.returncode != 0:
+        print(f"\n[CRITICAL] Injection Job Crashed! Return Code: {process.returncode}")
+        print(f"File: {result_file}")
+        print(f"STDERR TAIL:\n{process.stderr[-1000:]}")
+        raise RuntimeError(f"WEAVE crashed with code {process.returncode}")
+
+    if not Path(result_file).exists():
+        print(f"\n[ERROR] Injection Job finished (0), but NO OUTPUT FILE: {result_file}")
+        print(f"STDOUT TAIL:\n{process.stdout[-1000:]}")
+        raise FileNotFoundError(f"WEAVE output missing: {result_file}")
+
     return result_file
 
 def determine_efficiency(taskname, stage, config, target, freq, freq_deriv_order, n_seg, num_top_list, sft_files, metric_file, 
