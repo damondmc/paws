@@ -201,3 +201,14 @@ def is_mismatch_exist(file_path):
         return False
     except FileNotFoundError:
         return False
+
+def get_meta_info(filename):
+    """
+    Reads meta information from FITS header.
+    Parameters:
+        - filename (str): Path to the FITS file.
+    Returns:
+        - Tuple containing CPU total time, peak memory usage, and number of templates.
+    """
+    data = fits.getheader(filename, ext=0)
+    return data['CPU TOTAL'], data['PEAKMEM'], data['NSEMITMPL NU0DOT']

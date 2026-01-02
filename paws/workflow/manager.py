@@ -176,20 +176,23 @@ class WorkflowManager:
     #  SECTION 2: UPPER LIMIT STAGE
     # =========================================================================
 
-    def _upper_limit_args(self, metric_file, coh_day, freq, stage, freq_deriv_order, num_top_list, n_inj, 
-                          sky_uncertainty, h0est, num_cpus, sft_files, cluster, work_in_local_dir, use_osdf):
+    def _upperlimit_args(self, taskname, freq, stage, freq_deriv_order, n_seg, num_top_list, 
+                         sft_files, metric_file, data_file, n_inj, h0_est, sky_uncertainty, request_cpu, 
+                         cluster, work_in_local_dir, use_osdf):
         """Generates command line arguments for the python upper limit script."""
         if work_in_local_dir:
             metric_file = Path(metric_file).name
 
-        sft_files_str = ';'.join([Path(s).name for s in sft_files])
+        sft_files = ';'.join([Path(s).name for s in sft_files])
         
         # Construct argument string
         arg_list_string = (
-            f'--target {self.target["name"]} --obsDay {self.obs_day} --cohDay {coh_day} '
+            f'--taskname {taskname} '
             f'--freq {freq} --stage {stage} --freqDerivOrder {freq_deriv_order} '
-            f'--numTopList {num_top_list} --nInj {n_inj} --sftFiles {sft_files_str} '
-            f'--num_cpus {num_cpus} --skyUncertainty {sky_uncertainty} --h0est {h0est} --metric_file {metric_file}'
+            f'--nSeg {n_seg} --numTopList {num_top_list} '
+            f'--sftFiles {sft_files} --metric_file {Path(metric_file).name} --data_fule {Path(data_file).name} '
+            f'--n_inj {n_inj} --h0_est {h0_est} --sky_uncertainty {sky_uncertainty} '
+            f'--request_cpu {request_cpu} '
         )
 
         if cluster:
@@ -201,93 +204,82 @@ class WorkflowManager:
             
         return arg_list_string
 
-    def _ul_transfer_args(self, coh_day, freq, freq_deriv_order, metric_file, stage, sft_files, cluster, use_osg):
+    def _upperlimit_dag_args(self, taskname, freq, stage, sft_files, metric_file, data_file,
+                             cluster, exe, image):
         """Generates VARS for OSG file transfers for Upper Limits."""
         # Find the Search Result file (input for UL)
-        search_taskname = task_name(self.target['name'], 'search', coh_day, freq_deriv_order)
-        search_result_file = self.paths.outlier_file(freq, search_taskname, 'search', cluster=cluster)
-        
-        exe = self.paths.upper_limit_executable
-        image = self.paths.container_image
         
         # Build Input Files list
-        input_files_list = [str(exe), str(image), str(search_result_file)]
+        input_files_list = [str(exe), str(image), str(data_file)]
         input_files_list.extend([str(s) for s in sft_files])
         input_files_list.append(str(metric_file))
         
-        input_files_str = ", ".join(input_files_list)
+        input_files = ", ".join(input_files_list)
 
         # Output File (The result of the UL analysis)
-        ul_taskname = task_name(self.target['name'], stage, coh_day, freq_deriv_order)
-        outlier_file_path = self.paths.outlier_file(freq, ul_taskname, stage, cluster=cluster)
-        make_dir([outlier_file_path])
+        outlier_file = self.paths.outlier_file(freq, taskname, stage, cluster=cluster)
+        make_dir([outlier_file])
 
         arg_list = (
-            f'OUTPUTFILE="{Path(outlier_file_path).name}" '
-            f'REMAPOUTPUTFILE="{outlier_file_path}" '
-            f'TRANSFERFILES="{input_files_str}" '
+            f'OUTPUTFILE="{Path(outlier_file).name}" '
+            f'REMAPOUTPUTFILE="{outlier_file}" '
+            f'TRANSFERFILES="{input_files}" '
         )
         return arg_list
-
-    def make_upper_limit_dag(self, fmin, fmax, coh_day, sft_files, freq_deriv_order=2, metric_file='', 
-                             stage='upperLimit', sky_uncertainty=1e-4, h0est=[1e-25], n_inj=100, 
-                             num_top_list=1000, num_cpus=4, request_memory='4GB', request_disk='4GB', 
-                             cluster=False, work_in_local_dir=False, use_osg=False, use_osdf=False):
+        
+    def make_upperlimit_dag(self, taskname, freq, h0_est, num_top_list, stage, freq_deriv_order, n_seg,
+                            sft_files, metric_file, data_file, sky_uncertainty=1e-4, n_inj=100, cluster=False,
+                            request_memory='4GB', request_disk='4GB', request_cpu=4, 
+                            use_osg=False, use_osdf=False, exe=None, image=None, 
+                            work_in_local_dir=False):
         """
         Creates the DAG and SUB files for the Upper Limit stage.
         """
-        ul_taskname = task_name(self.target['name'], stage, coh_day, freq_deriv_order, f'{fmin}-{fmax}')
-        dag_file_path = self.paths.dag_file('', ul_taskname, stage) # Empty freq for ensemble dag
+        t0 = time.time()
+        print(f"Generating SEARCH DAG for {taskname}...")
+
+        if use_osdf and not use_osg:
+            print('Warning: SFTs from OSDF requested but not using OSG resources.')
+
+        self.freq_param_names, self.freq_deriv_param_names = phase_param_name(freq_deriv_order)
+        self.num_top_list = num_top_list
+            
+        dag_file_path = self.paths.dag_file(freq, taskname, stage)
+        dag_file_path.parent.mkdir(parents=True, exist_ok=True)
         dag_file_path.unlink(missing_ok=True)
         
-        print(f"Generating UPPER LIMIT DAG for {ul_taskname}...")
+        cr_files = self.paths.condor_record_files(freq, taskname, stage)
+        make_dir(cr_files)
 
-        # Loop through frequency bands
-        for job_index, freq in tqdm(enumerate(range(fmin, fmax), 1), total=fmax-fmin):
-            
-            taskname_freq = task_name(self.target['name'], stage, coh_day, freq_deriv_order, freq)
-            
-            # Executable setup
-            exe = self.paths.upper_limit_executable
-            local_exe_name = Path(exe).name
-            image = self.paths.container_image
-            local_image_name = Path(image).name
+        args = self._upperlimit_args(taskname, freq, stage, freq_deriv_order, n_seg, num_top_list, 
+                                     sft_files, metric_file, data_file, 
+                                     n_inj, h0_est, sky_uncertainty, request_cpu, 
+                                     cluster, work_in_local_dir, use_osdf
+        )
+        exe = exe if exe else self.paths.upper_limit_executable
+        
+        sub_file_path = self.paths.condor_sub_file(freq, taskname, stage)
+        sub_file_path.parent.mkdir(parents=True, exist_ok=True)
+        sub_file_path.unlink(missing_ok=True)
+        
+        write_search_subfile(
+            filename=str(sub_file_path), executable_path=str(exe), transfer_executable=False, 
+            output_path=str(cr_files[0]), error_path=str(cr_files[1]), log_path=str(cr_files[2]), 
+            arg_list_string=args, accounting_group=self.config['acc_group'], user=self.config['user'],
+            request_memory=request_memory, request_disk=request_disk, request_cpu=request_cpu,
+            use_osg=use_osg, use_osdf=use_osdf, image=image
+        )   
+    
+        for job_index, params in tqdm(enumerate(params, 1), total=params.size):
+            arg_list = self._upperlimit_dag_args(
+                taskname, freq, stage, sft_files, metric_file, data_file, cluster, exe, image
+            )
+            write_search_dagfile(str(dag_file_path), taskname, str(sub_file_path), job_index, arg_list)
 
-            # Paths
-            sub_file_path = self.paths.condor_sub_file(freq, taskname_freq, stage)
-            sub_file_path.unlink(missing_ok=True)
-            cr_files = self.paths.condor_record_files(freq, taskname_freq, stage)
-            make_dir(cr_files)
-            
-            # NOTE: Assuming sft_files passed in are valid for this freq, or using utils to find them if specific
-            # Use specific h0est for this frequency band if list provided
-            current_h0 = h0est[job_index-1] if isinstance(h0est, list) else h0est
-
-            # Arguments for the python script
-            script_args = self._upper_limit_args(
-                metric_file, coh_day, freq, stage, freq_deriv_order, num_top_list, n_inj, 
-                sky_uncertainty, current_h0, num_cpus, sft_files, cluster, work_in_local_dir, use_osdf
-            )
-            
-            # Write SUB file
-            write_search_subfile(
-                filename=str(sub_file_path), executable_path=str(local_exe_name), transfer_executable=True,
-                output=str(cr_files[0]), error_path=str(cr_files[1]), log_path=str(cr_files[2]),
-                arg_list_string=script_args, request_memory=request_memory, request_disk=request_disk,
-                use_osg=use_osg, use_osdf=use_osdf, image=local_image_name,
-                accounting_group=self.config['acc_group'], user=self.config['user']
-            )
-            
-            # Arguments for DAG (OSG Transfer Logic)
-            dag_vars = self._ul_transfer_args(
-                coh_day, freq, freq_deriv_order, metric_file, stage, sft_files, cluster, use_osg
-            )
-            
-            write_search_dagfile(str(dag_file_path), taskname_freq, str(sub_file_path), job_index, dag_vars)
-            
-        print(f'Finish writing upper limit dag: {fmin}-{fmax}Hz')
+        elapsed = time.time() - t0
+        print(f'Finished writing {stage} dag files. Time: {elapsed:.2f}s')
         return dag_file_path
-
+    
     # =========================================================================
     #  SECTION 3: FOLLOW-UP STAGE
     # =========================================================================
