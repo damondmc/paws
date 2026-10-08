@@ -67,6 +67,13 @@ def write_search_subfile(
 
             if use_osdf:
                 subfile.write("use_oauth_services = scitokens\n")
+                # A broken OSDF upload leaves truncated objects and the site's
+                # PelicanRetry rerun is then held with "remote object already exists".
+                # Remove it so DAGMan RETRY + the PRE cleanup script rerun the node.
+                subfile.write(
+                    "periodic_remove = (JobStatus == 5) && (HoldReasonCode == 12) && "
+                    'regexp("remote object already exists", HoldReason)\n'
+                )
 
         subfile.write("queue 1\n")
 

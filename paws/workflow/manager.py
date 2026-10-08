@@ -11,6 +11,49 @@ from paws.io import make_dir
 
 from .writer import write_search_dagfile, write_search_subfile
 
+# DAGMan PRE script that deletes the OSDF outputs a node left behind before it is
+# (re)submitted. A broken output upload leaves truncated objects on the origin, the
+# site's PelicanRetry transform reruns the job, and Pelican refuses to overwrite, so
+# the rerun is held with "remote object already exists"; periodic_remove (see
+# write_search_subfile) turns that hold into a node failure and RETRY resubmits it.
+# DAGMan never runs PRE for DONE nodes, so finished outputs are never touched.
+# Args: <stage DAG root (condorFiles/<stage>/<target>)> <allowed OSDF dir> <$JOB>
+OSDF_CLEANUP_SCRIPT = r"""#!/bin/bash
+ROOT=$1
+ALLOWED=$2
+LOG="$ROOT/cleanup_osdf_outputs.log"
+
+# Multi-DAG node names carry an "<index>." prefix: 239.GalacticCenter_..._259Hz_3
+NODE=$(sed 's/^[0-9]\+\.//' <<< "$3")
+TASKNAME=${NODE%_*}
+FREQ=$(sed -n 's/.*_\([0-9]\+\)Hz$/\1/p' <<< "$TASKNAME")
+DAG_FILE="$ROOT/$FREQ/$TASKNAME.dag"
+
+line=$(grep -m1 "^VARS $NODE " "$DAG_FILE" 2>/dev/null)
+if [ -z "$line" ]; then
+    echo "$(date -Is) $3: no VARS line for $NODE in $DAG_FILE" >> "$LOG"
+    exit 1
+fi
+
+remaps=$(sed -n 's/.*REMAP_OUTPUT_FILES="\([^"]*\)".*/\1/p' <<< "$line")
+IFS=';' read -ra pairs <<< "$remaps"
+n_del=0
+for pair in "${pairs[@]}"; do
+    url="${pair#*=}"
+    path="/osdf${url#osdf://}"
+    if [[ "$path" != "$ALLOWED"* ]]; then
+        echo "$(date -Is) $NODE: refusing to touch $path" >> "$LOG"
+        exit 1
+    fi
+    if [ -e "$path" ]; then
+        rm -f -- "$path" || exit 1
+        n_del=$((n_del + 1))
+    fi
+done
+[ "$n_del" -gt 0 ] && echo "$(date -Is) $NODE: deleted $n_del existing output(s)" >> "$LOG"
+exit 0
+"""
+
 
 class WorkflowManager:
     """
@@ -78,6 +121,35 @@ class WorkflowManager:
             f.write('done < "$TASK_FILE"\n')
 
         return wrapper_path
+
+    def make_osdf_cleanup_dag(self, stage, n_retry=3):
+        """
+        Writes the stage's OSDF cleanup PRE script and a node-less DAG holding
+        SCRIPT PRE ALL_NODES + RETRY ALL_NODES, and returns that DAG's path.
+
+        In a multi-DAG submission ALL_NODES reaches the nodes of every DAG file, so
+        these lines must live in this one file only, listed LAST in the dag list.
+        """
+        dag_root = self.paths.dag_file(0, "cleanup", stage).parent.parent
+        stage_dir = dag_root.parent
+        stage_dir.mkdir(parents=True, exist_ok=True)
+        allowed = self.paths.osdf_dir / "o4ab" / "results" / stage
+
+        script_path = stage_dir / "cleanup_osdf_outputs.sh"
+        with open(script_path, "w") as f:
+            f.write(OSDF_CLEANUP_SCRIPT)
+
+        all_nodes_path = stage_dir / "all_nodes.dag"
+        with open(all_nodes_path, "w") as f:
+            f.write(
+                "# Applies to every node of the multi-DAG it is submitted with: list this file LAST.\n"
+            )
+            f.write(
+                f"SCRIPT PRE ALL_NODES /bin/bash {script_path} {dag_root} {allowed}/ $JOB\n"
+            )
+            f.write(f"RETRY ALL_NODES {n_retry}\n")
+
+        return all_nodes_path
 
     def _search_batch_args(
         self,
