@@ -58,15 +58,15 @@ class PowerLawModel:
     def f4_broad_range(self, f0, f0_band, f1_min, f1_max):
         f4_min = (
             self.nc_min
-            * (3 * self.nc_min - 1)
-            * (2 * self.nc_min - 2)
+            * (2 * self.nc_min - 1)
+            * (3 * self.nc_min - 2)
             * np.minimum(f1_min**4, f1_max**4)
             / (f0 + f0_band) ** 3
         )
         f4_max = (
             self.nc_max
-            * (3 * self.nc_max - 1)
-            * (2 * self.nc_max - 2)
+            * (2 * self.nc_max - 1)
+            * (3 * self.nc_max - 2)
             * np.maximum(f1_min**4, f1_max**4)
             / f0**3
         )
@@ -90,7 +90,7 @@ class PowerLawModel:
         nc = np.atleast_1d(nc)
         if np.any(nc < 0):
             sys.exit("braking index is negative")
-        f4 = nc * (3.0 * nc - 1.0) * (2.0 * nc - 2.0) * f1**4 / f0**3
+        f4 = nc * (2.0 * nc - 1.0) * (3.0 * nc - 2.0) * f1**4 / f0**3
         return f4
 
 
