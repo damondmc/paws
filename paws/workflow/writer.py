@@ -74,6 +74,13 @@ def write_search_subfile(
                     "periodic_remove = (JobStatus == 5) && (HoldReasonCode == 12) && "
                     'regexp("remote object already exists", HoldReason)\n'
                 )
+                # Input transfer can fail before the job ever starts (e.g. the stash
+                # plugin crashes); PelicanRetry does not cover that, so release it a
+                # few times. Nothing was uploaded, so no cleanup is needed.
+                subfile.write(
+                    "periodic_release = (HoldReasonCode == 13) && (NumJobStarts == 0) && "
+                    "((NumHoldsByReason.TransferInputError ?: 0) < 3)\n"
+                )
 
         subfile.write("queue 1\n")
 
