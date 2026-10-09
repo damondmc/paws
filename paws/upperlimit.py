@@ -6,7 +6,6 @@ import time
 from pathlib import Path
 
 import numpy as np
-import yaml
 from astropy.io import fits
 
 from paws.analysis.sigmoid import SigmoidFitter
@@ -14,6 +13,7 @@ from paws.definitions import phase_param_name
 from paws.params.injections import InjectionParamGenerator
 from paws.params.models import PowerLawModel
 from paws.pipeline import determine_efficiency
+from paws.settings import Config, Target
 
 # Configure Logging
 logging.basicConfig(
@@ -48,18 +48,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="Calculate 95% Upper Limit via Injection."
     )
-    parser.add_argument(
-        "--config_file",
-        type=str,
-        help="Path to main config yaml",
-        default="/home/hoitim.cheung/galacticCenter/config/config.yaml",
-    )
-    parser.add_argument(
-        "--target_file",
-        type=str,
-        help="Path to target config yaml",
-        default="/home/hoitim.cheung/galacticCenter/config/GalacticCenter.yaml",
-    )
+    parser.add_argument("--config_file", type=str, required=True, help="Path to config.yaml")
+    parser.add_argument("--target_file", type=str, required=True, help="Path to the target yaml")
     parser.add_argument(
         "--taskname", type=str, default="GalacticCenter_upperlimit_TCoh5_O2_97Hz"
     )
@@ -137,13 +127,10 @@ def main():
     np.random.seed(0)
 
     # Load Configuration
-    with open(args.config_file, "r") as f:
-        config = yaml.safe_load(f)
-    with open(args.target_file, "r") as f:
-        target = yaml.safe_load(f)
+    config = Config.from_yaml(args.config_file)
+    target = Target.from_yaml(args.target_file)
 
-    weave_exe = config["executables"]["weave"]
-    weave_exe = "/opt/paws/.venv/bin/lalpulsar_Weave"  # Override for testing
+    weave_exe = "/opt/paws/.venv/bin/lalpulsar_Weave"  # Weave of the container image
 
     if args.work_in_local_dir:
         metric_file = Path(metric_file).name
@@ -160,30 +147,25 @@ def main():
     # spacing = {name: fits.getval(args.data_file, name, ext=0) for name in freq_deriv_names}
     df_grid = {name: df_grid[i] for i, name in enumerate(freq_deriv_names)}
 
-    f0_band = config["f0_band"]
+    f0_band = config.f0_band
 
     # 2. Initialize Managers
-    if freq < 200:
-        tau = 86400 * 365.25 * 300
-    else:
-        tau = 86400 * 365.25 * (300 + (freq - 199) * 0.5)
-
-    model = PowerLawModel(nc_min=config["nc_min"], nc_max=config["nc_max"], tau=tau)
+    model = PowerLawModel(nc_min=config.nc_min, nc_max=config.nc_max, tau=target.tau(freq))
     injection_generator = InjectionParamGenerator(
         model=model, ref_time=ref_time, f0_band=f0_band
     )
 
     search_data, injection_data = injection_generator.generate_parameters(
-        alpha=target["alpha"],
-        dalpha=target["dalpha"],
-        delta=target["delta"],
-        ddelta=target["ddelta"],
+        alpha=target.alpha,
+        dalpha=target.dalpha,
+        delta=target.delta,
+        ddelta=target.ddelta,
         non_sat_bands=non_sat_bands,
         spacing=df_grid,
         h0=1.0,
         freq=freq,
         n_inj=n_inj,
-        n_spacing=config["followup_n_spacing"],
+        n_spacing=config.followup_n_spacing,
         inj_freq_deriv_order=inj_freq_deriv_order,
         freq_deriv_order=freq_deriv_order,
         sky_radius=sky_radius,

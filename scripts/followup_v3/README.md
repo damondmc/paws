@@ -1,8 +1,8 @@
 # v3 follow-up
 
-0.1% (2F−4) ratio cut and 0.1% H1/L1 window (central 99.9% of the injections) at every stage, per 50 Hz band
-(20–50, 50–100, …, 350–400 Hz). All 380 bands, including the non-saturated jobs of 299/302/303/306/307 Hz.
-Cuts come from the v2 injections (`injections-v2-0` … `-3`).
+0.1% (2F−4) ratio cut and 0.1% H1/L1 window (central 99.9% of the injections) at every stage, per 100 Hz band
+(20–100, 100–200, 200–300, 300–400 Hz). All 380 bands, including the non-saturated jobs of 299/302/303/306/307 Hz.
+Cuts come from the v2 injections (`injections-v2-0` … `-3`). Stage settings are in `config/stages.yaml`.
 
 | k | stage | Tcoh / order | sky | seeds | earlier runs reused |
 |---|---|---|---|---|---|
@@ -20,8 +20,14 @@ A seed of stage k passes when its loudest candidate over the stage's sky points 
 ## Commands (from `paws/`)
 
 ```bash
+export PAWS_CONFIG_DIR=/home/hoitim.cheung/galacticCenter/config
+for k in 0 1 2 3; do                # config/injections-v2-k_hl_window_v3.txt
+  uv run paws cuts hl injections-v2-$k --out injections-v2-${k}_hl_window_v3.txt
+done
+for k in 1 2 3; do                  # config/injections-v2-(k-1)_vs_injections-v2-k_threshold_v3.txt
+  uv run paws cuts ratio injections-v2-$((k-1)) injections-v2-$k --out injections-v2-$((k-1))_vs_injections-v2-${k}_threshold_v3.txt
+done
 S=scripts/followup_v3/followup_v3.py
-uv run python $S cuts             # config/*_threshold_v3.txt, config/injections-v2-*_hl_window_v3.txt
 uv run python $S outliers 1       # followup-v3-1 from the followup-1 results (no jobs)
 uv run python $S dag 2            # DAG for the t20 seeds without an earlier result -> submit
 uv run python $S outliers 2       # after the DAG
@@ -36,5 +42,5 @@ uv run python $S outliers 3
 
 | stage | seeds | pass | clustered |
 |---|---|---|---|
-| search-0 (t5) H1/L1 window | 647,229 (clustered search-0 outliers) | 65,796 | 65,796 (already one per cluster) |
-| followup-v3-1 (t10) | 65,796 | 12,553 | 11,928 |
+| search-0 (t5) H1/L1 window | 647,229 (clustered search-0 outliers) | 71,721 | 71,721 (already one per cluster) |
+| followup-v3-1 (t10) | 71,721 | 16,654 | 15,727 |

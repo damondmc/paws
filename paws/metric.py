@@ -6,35 +6,25 @@ Writes to <home_dir>/metricSetup/ (or --out-dir)
   o4_<T>days_segments.png                           detector coverage and segments
   o4ab_t<T>_s<N>.fts                                with --metric (lalpulsar_WeaveSetup)
 
-Usage (from paws/):
-  uv run python scripts/make_metric.py 40
-  uv run python scripts/make_metric.py 40 --metric -s 3
+Usage:
+  paws metric 40
+  paws metric 40 --metric -s 3
 """
-import argparse
-import os
 import shutil
 import subprocess
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import yaml
 from matplotlib.patches import Patch
 
 from paws.filepaths import PathManager
 
-with open("/home/hoitim.cheung/galacticCenter/config/config.yaml") as f:
-    config = yaml.safe_load(f)
-with open(f"{config['home_dir']}config/gal.yaml") as f:
-    target = yaml.safe_load(f)
-paths = PathManager(config, target)
-
 START_TIME = 1368970000
 T_SFT = 1800
-WEAVE_SETUP = "/home/hoitim.cheung/opt_test/lalsuite/bin/lalpulsar_WeaveSetup"
 
 
-def read_timestamps(out_dir, sft_band, refresh):
+def read_timestamps(paths, out_dir, sft_band, refresh):
     """SFT timestamps of H1 and L1, read from one SFT file each (cached as text)."""
     ts = {}
     for det in ("H1", "L1"):
@@ -108,32 +98,33 @@ def plot(ts, segs, tcoh_day, path):
     print(f"plot: {path}")
 
 
-def make_metric(seg_file, tcoh_day, spindowns, metric_type, out_dir, force):
+def make_metric(config, seg_file, tcoh_day, spindowns, metric_type, out_dir, force):
     out = out_dir / f"o4ab_t{tcoh_day:g}_s{spindowns}.fts"
     if out.exists() and not force:
         raise SystemExit(f"{out} exists (use --force to overwrite)")
-    exe = WEAVE_SETUP if os.path.exists(WEAVE_SETUP) else shutil.which("lalpulsar_WeaveSetup")
+    exe = config.executables.weave_setup or shutil.which("lalpulsar_WeaveSetup")
     cmd = [exe, f"--output-file={out}", "--detectors=H1,L1", f"--segment-list={seg_file}",
-           f"--spindowns={spindowns}", f"--ref-time={config['ref_time']}", f"--metric-type={metric_type}"]
+           f"--spindowns={spindowns}", f"--ref-time={config.ref_time}", f"--metric-type={metric_type}"]
     print(" ".join(cmd), flush=True)
     subprocess.run(cmd, check=True)
     print(f"metric: {out}")
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def add_arguments(p):
     p.add_argument("tcoh", type=float, help="coherence time [days]")
     p.add_argument("--metric", action="store_true", help="also run lalpulsar_WeaveSetup")
     p.add_argument("-s", "--spindowns", type=int, default=2)
     p.add_argument("--metric-type", default="directed")
-    p.add_argument("--out-dir", type=Path, default=Path(config["home_dir"]) / "metricSetup")
+    p.add_argument("--out-dir", type=Path, help="default <home_dir>/metricSetup")
     p.add_argument("--sft-band", type=int, default=20, help="SFT band [Hz] the timestamps are read from")
     p.add_argument("--refresh-timestamps", action="store_true", help="re-read the SFT files")
     p.add_argument("--force", action="store_true", help="overwrite an existing metric file")
-    a = p.parse_args()
 
+
+def run(settings, a):
+    a.out_dir = a.out_dir or settings.config.home_dir / "metricSetup"
     a.out_dir.mkdir(parents=True, exist_ok=True)
-    ts = read_timestamps(a.out_dir, a.sft_band, a.refresh_timestamps)
+    ts = read_timestamps(PathManager(settings.config, settings.target), a.out_dir, a.sft_band, a.refresh_timestamps)
     segs = make_segments(ts, a.tcoh)
     seg_file = a.out_dir / f"o4_{a.tcoh:g}days_segments.txt"
     np.savetxt(seg_file, segs, fmt="%d", delimiter="\t")
@@ -141,8 +132,4 @@ def main():
     check(ts, segs)
     plot(ts, segs, a.tcoh, a.out_dir / f"o4_{a.tcoh:g}days_segments.png")
     if a.metric:
-        make_metric(seg_file, a.tcoh, a.spindowns, a.metric_type, a.out_dir, a.force)
-
-
-if __name__ == "__main__":
-    main()
+        make_metric(settings.config, seg_file, a.tcoh, a.spindowns, a.metric_type, a.out_dir, a.force)

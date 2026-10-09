@@ -3,10 +3,10 @@ import argparse
 import time
 
 import numpy as np
-import yaml
 from astropy.io import fits
 
 from paws.analysis.outlier import ResultAnalysisManager
+from paws.settings import Config, Target
 
 
 def main():
@@ -41,12 +41,9 @@ def main():
 
     t0 = time.time()
 
-    with open(args.config_file, "r") as f:
-        config = yaml.safe_load(f)
-    with open(args.target_file, "r") as f:
-        target = yaml.safe_load(f)
-
-    result_manager = ResultAnalysisManager(config, target)
+    result_manager = ResultAnalysisManager(
+        Config.from_yaml(args.config_file), Target.from_yaml(args.target_file)
+    )
 
     mean2f_th = fits.getdata(args.prev_outlier_file)["mean2F threshold"]
     if args.zero_threshold:

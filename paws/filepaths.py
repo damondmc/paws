@@ -14,20 +14,20 @@ class PathManager:
         Initialize with configuration dictionaries.
 
         Args:
-            config (dict): The loaded config.yaml
-            target (dict): The loaded target.yaml (e.g., GalacticCenter.yaml)
+            config (paws.settings.Config)
+            target (paws.settings.Target)
         """
         self.config = config
         self.target = target
 
         # Define Roots as Path objects for easy manipulation
-        self.home_dir = Path(config["home_dir"])
-        self.osdf_dir = Path(config["osdf_dir"])
+        self.home_dir = Path(config.home_dir)
+        self.osdf_dir = Path(config.osdf_dir)
 
         # Frequently used attributes
-        self.target_name = target["name"]
-        self.sft_source = config["sft_source"]
-        self.user = config["user"]
+        self.target_name = target.name
+        self.sft_source = config.sft_source
+        self.user = config.user
 
     # ---------------------------------------------------------
     # Core Executables
@@ -35,7 +35,7 @@ class PathManager:
 
     @property
     def weave_executable(self):
-        return self.config["executables"]["weave"]
+        return self.config.executables.weave
 
     # ---------------------------------------------------------
     # Input Data (SFTs)
@@ -53,7 +53,7 @@ class PathManager:
         Returns the DIRECTORY path containing SFTs for a specific frequency.
         sft_dir in config.yaml is the local OSDF mount path (e.g. /osdf/igwn/.../SFTs).
         """
-        return Path(self.config["sft_dir"]) / detector / str(int(freq))
+        return Path(self.config.sft_dir) / detector / str(int(freq))
 
     def sft_ensemble(self, freq):
         """

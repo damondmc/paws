@@ -66,8 +66,8 @@ class WorkflowManager:
         Initialize the WorkflowManager.
 
         Parameters:
-            config (dict): Configuration dictionary (user, accounting, etc.).
-            target (dict): Target object containing astronomical target info.
+            config (paws.settings.Config)
+            target (paws.settings.Target)
         """
         self.config = config
         self.target = target
@@ -86,13 +86,13 @@ class WorkflowManager:
         """Helper to generate common keyword arguments for the search executable."""
         extra_stats = "coh2F_det,mean2F,coh2F_det,mean2F_det"
         kwargs = {
-            "semi-max-mismatch": self.config["semi_mm"],
+            "semi-max-mismatch": self.config.semi_mm,
             "toplist-limit": self.num_top_list,
             "extra-statistics": extra_stats,
         }
 
         if n_seg != 1:
-            kwargs["coh-max-mismatch"] = self.config["coh_mm"]
+            kwargs["coh-max-mismatch"] = self.config.coh_mm
 
         return kwargs
 
@@ -330,8 +330,8 @@ class WorkflowManager:
             error_path=str(cr_files[1]),
             log_path=str(cr_files[2]),
             arg_list_string=f"{wrapper_path.name if use_osg else wrapper_path} $(CMD_ARGS)",
-            accounting_group=self.config["acc_group"],
-            user=self.config["user"],
+            accounting_group=self.config.acc_group,
+            user=self.config.user,
             request_memory=request_memory,
             request_disk=request_disk,
             request_cpu=request_cpu,
@@ -579,8 +579,8 @@ class WorkflowManager:
             error_path=str(cr_files[1]),
             log_path=str(cr_files[2]),
             arg_list_string=full_arg_string,
-            accounting_group=self.config["acc_group"],
-            user=self.config["user"],
+            accounting_group=self.config.acc_group,
+            user=self.config.user,
             request_memory=request_memory,
             request_disk=request_disk,
             request_cpu=request_cpu,
@@ -787,8 +787,8 @@ class WorkflowManager:
             error_path=str(cr_files[1]),
             log_path=str(cr_files[2]),
             arg_list_string=full_arg_string,
-            accounting_group=self.config["acc_group"],
-            user=self.config["user"],
+            accounting_group=self.config.acc_group,
+            user=self.config.user,
             request_memory=request_memory,
             request_disk=request_disk,
             request_cpu=request_cpu,

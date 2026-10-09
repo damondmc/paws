@@ -44,16 +44,16 @@ def search_job(
         f"--output-file={result_file}",
         f'--sft-files="{sft_files}"',
         f"--setup-file={metric_file}",
-        f"--semi-max-mismatch={config['semi_mm']}",
+        f"--semi-max-mismatch={config.semi_mm}",
         f"--toplist-limit={num_toplist}",
         f"--extra-statistics={extra_stats}",
-        f"--alpha={target['alpha']}",
-        f"--delta={target['delta']}",
+        f"--alpha={target.alpha}",
+        f"--delta={target.delta}",
     ]
 
     # Add coherence mismatch if the coherence time is not equal to the total observation time
     if n_seg > 1:
-        cmd_parts.append(f"--coh-max-mismatch={config['coh_mm']}")
+        cmd_parts.append(f"--coh-max-mismatch={config.coh_mm}")
 
     # Add frequency/derivative parameters
     freq_names, freq_deriv_names = phase_param_name(freq_deriv_order)
@@ -97,15 +97,15 @@ def injection_job(
         f"--output-file={result_file}",
         f'--sft-files="{sft_files}"',
         f"--setup-file={metric_file}",
-        f"--semi-max-mismatch={config['semi_mm']}",
+        f"--semi-max-mismatch={config.semi_mm}",
         f"--toplist-limit={num_toplist}",
         f"--extra-statistics={extra_stats}",
-        f"--alpha={target['alpha']}",
-        f"--delta={target['delta']}",
+        f"--alpha={target.alpha}",
+        f"--delta={target.delta}",
     ]
 
     if n_seg > 1:
-        cmd_parts.append(f"--coh-max-mismatch={config['coh_mm']}")
+        cmd_parts.append(f"--coh-max-mismatch={config.coh_mm}")
 
     freq_names, freq_deriv_names = phase_param_name(freq_deriv_order)
     for f_name, df_name in zip(freq_names, freq_deriv_names):
