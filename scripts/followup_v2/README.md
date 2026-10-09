@@ -1,5 +1,8 @@
 # v2 follow-up chain (2026-10)
 
+The `make_*` scripts below were merged into the `paws` CLI; their stage settings are entries of
+`config/stages.yaml`. The files as run are in commit 617c672 (`git show 617c672:scripts/followup_v2/<file>`).
+
 Scripts that produced the v2 injection chain and the v2 real-search follow-up, frozen
 with the settings each stage actually ran with. The shared scripts one level up
 (`make_inj_dag.py`, `make_followup_dag.py`, `make_followup_outlier.py`) keep changing,
