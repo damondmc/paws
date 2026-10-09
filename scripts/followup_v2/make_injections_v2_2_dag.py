@@ -29,21 +29,21 @@ cluster = True
 is_injection = True  # True to carry injections from prev stage into DAG
 
 ################################################
-prev_stage = "injections-v2-2"
-prev_tcoh = 20
+prev_stage = "injections-v2-1"
+prev_tcoh = 10
 prev_freq_deriv_order = 2
 ################################################
 
 ################################################
-stage = "injections-v2-3"
-tcoh = 40
-freq_deriv_order = 3
+stage = "injections-v2-2"
+tcoh = 20
+freq_deriv_order = 2
 ################################################
 
 ################################################
 inj_freq_deriv_order = 4
-n_seg = 14
-tasks_per_job = 57  # 1 injection x 57 sky points per Condor job (~1.2-3.7 h)
+n_seg = 27
+tasks_per_job = 114  # 2 injections x 57 sky points per Condor job (~1 h)
 sky_radius = 0
 spacing_alpha = None
 spacing_delta = None
@@ -161,7 +161,7 @@ with open(dag_list_path, "w") as f_daglist:
             n_seg=n_seg,
             sft_files=sft_files,
             metric_file=metric_file,
-            request_memory="4GB",  # old t40 O3 Weave peak 2.17 GB
+            request_memory="2GB",  # old t10/t20 O2 Weave peak 0.7 GB
             request_disk="4GB",  # ~2.4 GB used
             request_cpu=1,
             use_osg=use_osg,

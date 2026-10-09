@@ -25,30 +25,30 @@ fmin = 20
 fmax = 400
 use_osg = True
 use_osdf = True
-cluster = True
-is_injection = True  # True to carry injections from prev stage into DAG
+cluster = False  # the saturated table lives in the unclustered search-0 file
+is_injection = False  # True to carry injections from prev stage into DAG
 
 ################################################
-prev_stage = "injections-v2-2"
-prev_tcoh = 20
+prev_stage = "search-0"
+prev_tcoh = 5
 prev_freq_deriv_order = 2
 ################################################
 
 ################################################
-stage = "injections-v2-3"
-tcoh = 40
-freq_deriv_order = 3
+stage = "followup-v2-1-sat"
+tcoh = 10
+freq_deriv_order = 2
 ################################################
 
 ################################################
 inj_freq_deriv_order = 4
-n_seg = 14
-tasks_per_job = 57  # 1 injection x 57 sky points per Condor job (~1.2-3.7 h)
+n_seg = 54
+tasks_per_job = 20  # 20 seeds per Condor job, single sky point
 sky_radius = 0
 spacing_alpha = None
 spacing_delta = None
-sky_grid_file = "/home/hoitim.cheung/galacticCenter/config/gc_sky_grid.txt"  # actual Weave sky grid offsets (d_alpha, d_delta)
-# sky_grid_file = None  # single sky point
+# sky_grid_file = "/home/hoitim.cheung/galacticCenter/config/gc_sky_grid.txt"  # actual Weave sky grid offsets (d_alpha, d_delta)
+sky_grid_file = None  # single sky point
 n_inj_max = None  # keep only the first n_inj_max injections per band (None = all)
 ################################################
 
@@ -86,7 +86,8 @@ with open(dag_list_path, "w") as f_daglist:
                 data_file = paths.outlier_file(
                     freq, data_taskname, prev_stage, cluster=cluster, osdf=True
                 )
-            data = fits.getdata(data_file, ext=1)
+            # loudest candidate of each saturated search-0 job (one row per job)
+            data = fits.getdata(data_file, extname="SEARCH-0_SAT_OUTLIER")
             if is_injection:
                 injection_data = fits.getdata(data_file, extname="injection")
                 # Outlier and injection tables are row-aligned, so slicing
@@ -161,7 +162,7 @@ with open(dag_list_path, "w") as f_daglist:
             n_seg=n_seg,
             sft_files=sft_files,
             metric_file=metric_file,
-            request_memory="4GB",  # old t40 O3 Weave peak 2.17 GB
+            request_memory="2GB",  # old t10 O2 Weave peak 0.72 GB
             request_disk="4GB",  # ~2.4 GB used
             request_cpu=1,
             use_osg=use_osg,

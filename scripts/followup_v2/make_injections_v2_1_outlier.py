@@ -28,12 +28,12 @@ f0_band = config["f0_band"]
 cluster = True
 
 #################################################################
-is_injection = False
-prev_stage = "search-0"
+is_injection = True
+prev_stage = "injections-v2-0"
 prev_tcoh = 5
 prev_freq_deriv_order = 2
 
-stage = "followup-1"
+stage = "injections-v2-1"
 tcoh = 10
 freq_deriv_order = 2
 

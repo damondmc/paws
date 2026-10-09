@@ -24,12 +24,11 @@ manager = WorkflowManager(config, target)  # PathManager is initialized inside h
 
 # Search Setup
 coh_day = 5
-stage = "search-0-checkpaws"
+stage = "search-0"
 freq_deriv_order = 2
 n_seg = 107
 f0_band = config["f0_band"]  # Use config!
-num_top_list = config["num_toplist"]
-num_top_list = 20000
+num_top_list = 2000
 metric_file = "osdf:///igwn/cit/staging/hoitim.cheung/metricSetup/Start1368970000_TCoh432000_N107_Spin2.fts"
 use_osg = True
 use_osdf = True
@@ -90,7 +89,7 @@ for fmin, fmax in zip(fminList, fmaxList):
                 n_seg=n_seg,
                 sft_files=sftFiles,
                 metric_file=metric_file,
-                request_memory="18GB",
+                request_memory="16GB",
                 request_disk="4GB",
                 request_cpu=1,
                 use_osg=use_osg,
@@ -98,3 +97,7 @@ for fmin, fmax in zip(fminList, fmaxList):
             )
 
             f_daglist.write(f"{dag_file}\n")
+
+        # Must be the LAST entry: its ALL_NODES lines apply to every DAG in the list
+        if use_osdf:
+            f_daglist.write(f"{manager.make_osdf_cleanup_dag(stage)}\n")

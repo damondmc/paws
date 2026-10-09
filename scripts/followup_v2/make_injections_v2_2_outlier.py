@@ -21,29 +21,30 @@ manager = WorkflowManager(config, target)  # PathManager is initialized inside h
 result_manager = ResultAnalysisManager(config, target)
 
 sat_band_list = [299, 302, 303, 306, 307]
-THREADS = 32
+THREADS = 16
 
 fmin, fmax = 20, 400
 f0_band = config["f0_band"]
 cluster = True
 
 #################################################################
-is_injection = False
-prev_stage = "search-0"
-prev_tcoh = 5
+is_injection = True
+prev_stage = "injections-v2-1"
+prev_tcoh = 10
 prev_freq_deriv_order = 2
 
-stage = "followup-1"
-tcoh = 10
+stage = "injections-v2-2"
+tcoh = 20
 freq_deriv_order = 2
 
-# n_sky = 57
-n_sky = 1
+n_sky = 57
+# n_sky = 1
 n_inj_max = None  # must match make_followup_dag.py (None = all)
 
-# Keep only the loudest candidate per parent job, as the injection follow-up does
-# (the real search previously kept the top 10 here).
-num_toplist = 1
+if is_injection:
+    num_toplist = 1
+else:
+    num_toplist = 10
 
 # For non-injection runs, threshold on mean2F scaled by the injection-derived
 # efficiency ratio between the previous and current follow-up stage instead of

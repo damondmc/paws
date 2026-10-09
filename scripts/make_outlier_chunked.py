@@ -38,7 +38,7 @@ TARGET_FILE = "/home/hoitim.cheung/galacticCenter/config/gal.yaml"
 
 # Bands to analyse this way, and how many slices each is cut into.
 big_bands = [314]
-n_chunks = 10
+n_chunks = 30
 
 # Which slices this run works on, 1-based: None does all of them in one go, or
 # name a subset (e.g. [1] then [2] ...) to spread the band over several runs.

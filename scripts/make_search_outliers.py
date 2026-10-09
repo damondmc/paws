@@ -30,6 +30,7 @@ stage = "search-0"
 coh_day = 5
 freq_deriv_order = 2
 n_seg = 107
+num_top_list = 2000  # Weave toplist-limit of search-0
 n_jobs = np.zeros(fmax - fmin)
 
 for i, freq in enumerate(range(fmin, fmax)):
@@ -93,7 +94,7 @@ for i, freq in tqdm(enumerate(range(fmin, fmax)), total=(fmax - fmin)):
         freq,
         mean2f_th,
         n_jobs[i],
-        num_toplist=config["num_toplist"],
+        num_toplist=num_top_list,
         stage=stage,
         freq_deriv_order=freq_deriv_order,
         cluster=True,

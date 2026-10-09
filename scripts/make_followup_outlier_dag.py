@@ -31,27 +31,27 @@ target_file_osdf = paths.to_osdf_url(
 
 # freq 298 - 310 not yet ready, so start from 310
 sat_band_list = [299, 302, 303, 306, 307]
-fmin, fmax = 20, 400
+fmin, fmax = 100, 120
 cluster = True
 
 #################################################################
-is_injection = False
-prev_stage = "followup-1"
-prev_tcoh = 10
-prev_freq_deriv_order = 2
+is_injection = True
+prev_stage = "injections-2-o3"
+prev_tcoh = 20
+prev_freq_deriv_order = 3
 
-stage = "followup-2"
-tcoh = 20
-freq_deriv_order = 2
+stage = "injections-3-o3"
+tcoh = 40
+freq_deriv_order = 3
 
-n_sky = 57
+n_sky = 1
 
 if is_injection:
     num_toplist = 1
 else:
     num_toplist = 10
 
-zero_threshold = True  # follow-up stage keeps all candidates instead of re-thresholding
+zero_threshold = False  # follow-up stage keeps all candidates instead of re-thresholding
 max_workers = 32
 
 request_memory = "8GB"
@@ -59,7 +59,7 @@ request_disk = "8GB"
 request_cpu = 1
 
 exe = "osdf:///igwn/cit/staging/hoitim.cheung/scripts/make_outlier_cli.py"
-image = "osdf:///igwn/cit/staging/hoitim.cheung/images/paws.sif"
+image = "osdf:///igwn/cit/staging/hoitim.cheung/images/paws_v10.sif"
 #################################################################
 
 home_dir = config["home_dir"]

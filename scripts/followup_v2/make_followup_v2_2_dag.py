@@ -1,4 +1,8 @@
+import sys
+from pathlib import Path
+
 import numpy as np
+SEED_MAP = np.load("/home/hoitim.cheung/galacticCenter/results/followup-v2-2/seed_map_followup-v2-1_vs_followup-1.npz")  # written by check_followup_v2_1_seeds.py
 import yaml
 from astropy.io import fits
 from tqdm import tqdm
@@ -26,24 +30,24 @@ fmax = 400
 use_osg = True
 use_osdf = True
 cluster = True
-is_injection = True  # True to carry injections from prev stage into DAG
+is_injection = False  # True to carry injections from prev stage into DAG
 
 ################################################
-prev_stage = "injections-v2-2"
-prev_tcoh = 20
+prev_stage = "followup-v2-1"
+prev_tcoh = 10
 prev_freq_deriv_order = 2
 ################################################
 
 ################################################
-stage = "injections-v2-3"
-tcoh = 40
-freq_deriv_order = 3
+stage = "followup-v2-2"
+tcoh = 20
+freq_deriv_order = 2
 ################################################
 
 ################################################
 inj_freq_deriv_order = 4
-n_seg = 14
-tasks_per_job = 57  # 1 injection x 57 sky points per Condor job (~1.2-3.7 h)
+n_seg = 27
+tasks_per_job = 114  # 2 seeds x 57 sky points per Condor job (~1 h)
 sky_radius = 0
 spacing_alpha = None
 spacing_delta = None
@@ -61,10 +65,13 @@ _, freq_deriv_param_names = phase_param_name(prev_freq_deriv_order)
 
 skipped_freqs = []
 
-dag_list_path = f"{home_dir}dagFiles/{stage}_{target['name']}_dag{fmin}-{fmax}Hz.txt"
+# optional arguments: bands to process (default fmin..fmax); a band list gets its own DAG list file
+freqs = [int(a) for a in sys.argv[1:]]
+dag_list_path = (f"{home_dir}dagFiles/{stage}_{target['name']}_dag{'_'.join(map(str, freqs))}Hz.txt" if freqs
+                 else f"{home_dir}dagFiles/{stage}_{target['name']}_dag{fmin}-{fmax}Hz.txt")
 
 with open(dag_list_path, "w") as f_daglist:
-    for freq in tqdm(range(fmin, fmax), desc="Generating DAGs", total=fmax - fmin):
+    for freq in tqdm(freqs or range(fmin, fmax), desc="Generating DAGs"):
         sft_files = []
         files = paths.sft_ensemble(freq)
         sft_files.extend(files)
@@ -87,6 +94,14 @@ with open(dag_list_path, "w") as f_daglist:
                     freq, data_taskname, prev_stage, cluster=cluster, osdf=True
                 )
             data = fits.getdata(data_file, ext=1)
+            # Only seeds that changed vs the old followup-1 clustering; exact matches reuse followup-2.
+            changed = np.where(SEED_MAP[f"{freq}_exact"] < 0)[0] if f"{freq}_exact" in SEED_MAP.files else np.zeros(0, int)
+            assert len(SEED_MAP[f"{freq}_exact"]) == len(data) if f"{freq}_exact" in SEED_MAP.files else True
+            data = data[changed]
+            if len(changed):
+                rows_file = Path(paths.dag_file(freq, "x", stage)).parent / "changed_rows.txt"
+                rows_file.parent.mkdir(parents=True, exist_ok=True)
+                np.savetxt(rows_file, changed, fmt="%d", header="followup-v2-1 clustered row index of each seed, in job-block order (57 jobs per seed)")
             if is_injection:
                 injection_data = fits.getdata(data_file, extname="injection")
                 # Outlier and injection tables are row-aligned, so slicing
@@ -161,7 +176,7 @@ with open(dag_list_path, "w") as f_daglist:
             n_seg=n_seg,
             sft_files=sft_files,
             metric_file=metric_file,
-            request_memory="4GB",  # old t40 O3 Weave peak 2.17 GB
+            request_memory="2GB",  # old t20 O2 Weave peak 0.73 GB
             request_disk="4GB",  # ~2.4 GB used
             request_cpu=1,
             use_osg=use_osg,

@@ -33,19 +33,19 @@ from paws.filepaths import PathManager
 CONFIG_FILE = "/home/hoitim.cheung/galacticCenter/config/config.yaml"
 TARGET_FILE = "/home/hoitim.cheung/galacticCenter/config/gal.yaml"
 
-fmin, fmax = 20, 400
+fmin, fmax = 100, 120
 sat_band_list = [299, 302, 303, 306, 307]
 THREADS = 32
 cluster = True
 
-is_injection = False
-prev_stage = "followup-1"
+is_injection = True
+prev_stage = "injections-1"
 prev_tcoh = 10
 prev_freq_deriv_order = 2
 
-stage = "followup-2"
+stage = "injections-2-o3"
 tcoh = 20
-freq_deriv_order = 2
+freq_deriv_order = 3
 
 n_sky = 57
 
@@ -55,7 +55,7 @@ n_keep_per_parent = 1
 if is_injection:
     num_toplist = 1
 else:
-    num_toplist = 10
+    num_toplist = 1
 
 # For non-injection runs, threshold on mean2F scaled by the injection-derived
 # efficiency ratio between the previous and current follow-up stage.

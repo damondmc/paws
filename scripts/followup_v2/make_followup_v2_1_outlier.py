@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -59,8 +60,10 @@ if not is_injection:
     band_step = fe[0] - fs[0]
 
 
-for freq in tqdm(range(fmin, fmax), total=(fmax - fmin)):
-    if freq in sat_band_list:
+# optional arguments: bands to process, saturated bands included (default fmin..fmax without sat_band_list)
+freqs = [int(a) for a in sys.argv[1:]]
+for freq in tqdm(freqs or range(fmin, fmax)):
+    if not freqs and freq in sat_band_list:
         print(f"Skipping saturated band {freq} Hz")
         continue
 

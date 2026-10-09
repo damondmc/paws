@@ -1,3 +1,5 @@
+"""t40 O3 sky-grid follow-up of the saturated-band seeds that passed t20 (followup-v2-2-sat, clustered).
+Kept separate from the normal candidates (followup-v2-3)."""
 import numpy as np
 import yaml
 from astropy.io import fits
@@ -26,16 +28,16 @@ fmax = 400
 use_osg = True
 use_osdf = True
 cluster = True
-is_injection = True  # True to carry injections from prev stage into DAG
+is_injection = False  # True to carry injections from prev stage into DAG
 
 ################################################
-prev_stage = "injections-v2-2"
+prev_stage = "followup-v2-2-sat"
 prev_tcoh = 20
 prev_freq_deriv_order = 2
 ################################################
 
 ################################################
-stage = "injections-v2-3"
+stage = "followup-v2-3-sat"
 tcoh = 40
 freq_deriv_order = 3
 ################################################
@@ -43,7 +45,7 @@ freq_deriv_order = 3
 ################################################
 inj_freq_deriv_order = 4
 n_seg = 14
-tasks_per_job = 57  # 1 injection x 57 sky points per Condor job (~1.2-3.7 h)
+tasks_per_job = 57  # 1 seed x 57 sky points per Condor job (~1.2-3.7 h)
 sky_radius = 0
 spacing_alpha = None
 spacing_delta = None
