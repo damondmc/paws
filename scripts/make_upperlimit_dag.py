@@ -34,22 +34,23 @@ target_file_osdf = paths.to_osdf_url(
 
 obs_day = 630
 coh_day = 5
-stage = "upperlimit-1pc"
+stage = "upperlimit-1pc-1skypt"
 freq_deriv_order = 2
 inj_freq_deriv_order = 4
 prev_stage = "search-0"
 prev_tcoh = 5
 prev_freq_deriv_order = 2
+# spacing > sky_radius: a single sky point
 sky_radius = 1.25e-4
-spacing_alpha = 1.25e-4
-spacing_delta = 1.25e-4
+spacing_alpha = 2.5e-4
+spacing_delta = 2.5e-4
 n_inj = 200
 num_toplist = 1
 
 fmin, fmax = 20, 400
 metric_file = "osdf:///igwn/cit/staging/hoitim.cheung/metricSetup/Start1368970000_TCoh432000_N107_Spin2.fts"
 
-exe = "osdf:///igwn/cit/staging/hoitim.cheung/scripts/upperlimit.py"
+exe = None  # None: paws.upperlimit in the image
 
 image = "osdf:///igwn/cit/staging/hoitim.cheung/images/paws.sif"
 

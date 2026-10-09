@@ -477,7 +477,7 @@ class WorkflowManager:
     ):
         """Generates VARS for OSG file transfers for Upper Limits."""
 
-        input_files_list = [str(exe), str(config_file), str(target_file)]
+        input_files_list = ([str(exe)] if exe else []) + [str(config_file), str(target_file)]
         input_files_list.extend([str(s) for s in sft_files])
         input_files_list.append(str(metric_file))
 
@@ -567,7 +567,9 @@ class WorkflowManager:
             request_cpu=request_cpu,
         )
 
-        full_arg_string = f"{Path(exe).name} {python_args}"
+        # exe=None: run paws.upperlimit from the container image
+        script = Path(exe).name if exe else "-m paws.upperlimit"
+        full_arg_string = f"{script} {python_args}"
 
         write_search_subfile(
             filename=str(sub_file_path),
