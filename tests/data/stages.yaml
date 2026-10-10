@@ -1,0 +1,91 @@
+# Test stages: one of each kind, a reuse source and a two-stage follow-up chain.
+target: target.yaml
+
+x-base: &base
+  prev: null
+  prev_sat: false
+  bands: [20, 400]
+  skip_bands: []
+  toplist: 1000
+  tasks_per_job: 4
+  request_memory: 2GB
+  request_disk: 4GB
+  request_cpu: 1
+  image: null
+  search_df1: null
+  search_df2: null
+  sky_grid: null
+  n_sky: 1
+  sky_radius: 0.0
+  spacing_alpha: null
+  spacing_delta: null
+  is_injection: false
+  inj_order: null
+  n_inj: null
+  n_inj_max: null
+  h0_file: null
+  keep: 1
+  thresholds: null
+  reuse: []
+  cluster: true
+  separate_saturated: false
+
+x-t5: &t5 {tcoh: 5, order: 2, n_seg: 107, metric: test_t5.fts}
+x-t10: &t10 {tcoh: 10, order: 2, n_seg: 54, metric: test_t10.fts}
+x-t20: &t20 {tcoh: 20, order: 2, n_seg: 27, metric: test_t20.fts}
+x-grid: &grid {sky_grid: sky_grid.txt, n_sky: 3}
+x-thresholds: &thresholds {excess_ratio_percentile: 1.0, h1_l1_percentile: 1.0, bands: [20, 100, 200, 300, 400]}
+
+stages:
+  search-0:
+    <<: [*t5, *base]
+    kind: search
+    toplist: 2000
+    keep: 2000
+    search_df1: 5.0e-10
+    search_df2: 1.0e-17
+    separate_saturated: true
+
+  injections-0:
+    <<: [*t5, *base]
+    kind: injection
+    prev: search-0
+    is_injection: true
+    inj_order: 4
+    n_inj: 20
+    h0_file: postprocess/data/h0.txt
+
+  injections-1:
+    <<: [*t10, *base]
+    kind: followup
+    prev: injections-0
+    is_injection: true
+    inj_order: 4
+
+  injections-2:
+    <<: [*grid, *t20, *base]
+    kind: followup
+    prev: injections-1
+    is_injection: true
+    inj_order: 4
+
+  followup-old-1:  # an earlier run whose Weave results followup-1 reuses
+    <<: [*t10, *base]
+    kind: followup
+    prev: search-0
+
+  followup-1:
+    <<: [*t10, *base]
+    kind: followup
+    prev: search-0
+    thresholds: {<<: *thresholds, injections: [injections-0, injections-1]}
+    reuse: [followup-old-1]
+
+  followup-2:
+    <<: [*grid, *t20, *base]
+    kind: followup
+    prev: followup-1
+    thresholds: {<<: *thresholds, injections: [injections-1, injections-2]}
+
+chains:
+  test: [followup-1, followup-2]

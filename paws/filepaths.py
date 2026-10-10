@@ -2,6 +2,12 @@
 from pathlib import Path
 
 
+def make_dir(filenames):
+    """Create the parent directory of each file."""
+    for name in filenames:
+        Path(name).resolve().parent.mkdir(parents=True, exist_ok=True)
+
+
 class PathManager:
     """
     Centralized management of file paths for the Weave pipeline.
@@ -146,29 +152,22 @@ class PathManager:
         )
         return base / f"{taskname}.fts.{job_index}"
 
-    def outlier_file(self, freq, taskname, stage, cluster=False, osdf=False):
+    def outlier_file(self, freq, taskname, stage, cluster, location):
         """
-        Path for the analyzed outlier file. Normally lives under home_dir
-        (written directly by a local run or transferred back from a Condor
-        job). When osdf=True, resolves the OSDF-staged location instead
-        (mirrors weave_output_file's layout) — used when an outlier-collection
-        Condor job remaps its output through OSDF instead of straight back
-        to the access point.
+        Path of a stage's outlier file (clustered or not).
+
+        location:
+          "home"      under home_dir, written by a local collection
+          "osdf"      under <osdf_dir>/o4ab, written by an outlier-collection Condor job
+                      (OSG jobs can't transfer output straight back to the access point)
+          "existing"  the home path if that file exists, else the OSDF path (for readers)
         """
-        root = self.osdf_dir / "o4ab" if osdf else self.home_dir
-        base = (
-            root
-            / "results"
-            / stage
-            / self.target_name
-            / self.sft_source
-            / str(freq)
-            / "Outliers"
-        )
-
-        if cluster:
-            filename = f"{taskname}_outlier_clustered.fts"
-        else:
-            filename = f"{taskname}_outlier.fts"
-
+        if location == "existing":
+            home_path = self.outlier_file(freq, taskname, stage, cluster, "home")
+            return home_path if home_path.exists() else self.outlier_file(freq, taskname, stage, cluster, "osdf")
+        roots = {"home": self.home_dir, "osdf": self.osdf_dir / "o4ab"}
+        if location not in roots:
+            raise ValueError(f"location must be 'home', 'osdf' or 'existing', not {location!r}")
+        base = roots[location] / "results" / stage / self.target_name / self.sft_source / str(freq) / "Outliers"
+        filename = f"{taskname}_outlier_clustered.fts" if cluster else f"{taskname}_outlier.fts"
         return base / filename

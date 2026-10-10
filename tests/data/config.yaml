@@ -1,0 +1,26 @@
+# Test config: home_dir, osdf_dir and sft_dir are replaced by temporary directories (tests/conftest.py)
+user: test.user
+home_dir: /replaced/home/
+osdf_dir: /replaced/osdf/
+
+executables:
+  weave: /opt/lalsuite/bin/lalpulsar_Weave
+  split_sfts: null
+  estimate_uls: null
+  weave_setup: null
+
+sft_source: TEST_SFTS
+sft_dir: /replaced/sfts
+acc_group: ligo.test.group
+ref_time: 1395617439
+
+f0_band: 0.025
+semi_mm: 0.2
+coh_mm: 0.1
+num_top_list: 1000
+
+cluster_n_spacing: 10.0
+followup_n_spacing: 15.0
+
+nc_min: 2.0
+nc_max: 7.0

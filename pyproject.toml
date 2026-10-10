@@ -21,6 +21,11 @@ paws = "paws.cli:main"
 [project.urls]
 Repository = "https://github.com/damondmc/paws"
 
+[project.optional-dependencies]
+notebook = [
+    "ipykernel>=7.3.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -32,9 +37,14 @@ packages = ["paws"]
 exclude = ["example/"]
 
 [tool.ruff.lint]
-select = ["I"]
+select = ["I", "F"]  # import order, pyflakes (undefined / unused names)
 
 [dependency-groups]
 dev = [
+    "pre-commit>=4.6.2",
     "pytest>=9.0.3",
+    "ruff==0.15.12",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

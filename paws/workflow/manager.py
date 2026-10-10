@@ -6,8 +6,7 @@ import numpy as np
 from tqdm import tqdm
 
 from paws.definitions import ext_param_name, phase_param_name
-from paws.filepaths import PathManager
-from paws.io import make_dir
+from paws.filepaths import PathManager, make_dir
 
 from .writer import write_search_dagfile, write_search_subfile
 
@@ -484,7 +483,7 @@ class WorkflowManager:
         input_files_str = ", ".join(input_files_list)
 
         outlier_file_path = self.paths.outlier_file(
-            freq, taskname, stage, cluster=cluster
+            freq, taskname, stage, cluster=cluster, location="home"
         )
         make_dir([outlier_file_path])
 
@@ -567,8 +566,8 @@ class WorkflowManager:
             request_cpu=request_cpu,
         )
 
-        # exe=None: run paws.upperlimit from the container image
-        script = Path(exe).name if exe else "-m paws.upperlimit"
+        # exe=None: run paws.jobs.upperlimit from the container image
+        script = Path(exe).name if exe else "-m paws.jobs.upperlimit"
         full_arg_string = f"{script} {python_args}"
 
         write_search_subfile(
@@ -672,8 +671,7 @@ class WorkflowManager:
             for job_index in range(1, n_jobs * n_sky + 1)
         ]
 
-        input_files_list = [
-            str(exe),
+        input_files_list = ([str(exe)] if exe else []) + [
             str(config_file),
             str(target_file),
             str(prev_outlier_file),
@@ -685,7 +683,7 @@ class WorkflowManager:
         # instead, same as the raw Weave results. Downstream readers (e.g.
         # make_followup_dag.py) need to check both locations.
         outlier_file_path = self.paths.outlier_file(
-            freq, taskname, stage, cluster=False, osdf=True
+            freq, taskname, stage, cluster=False, location="osdf"
         )
         make_dir([outlier_file_path])
 
@@ -696,7 +694,7 @@ class WorkflowManager:
 
         if cluster:
             clustered_file_path = self.paths.outlier_file(
-                freq, taskname, stage, cluster=True, osdf=True
+                freq, taskname, stage, cluster=True, location="osdf"
             )
             output_names.append(Path(clustered_file_path).name)
             remap_strings.append(
@@ -777,7 +775,9 @@ class WorkflowManager:
             max_workers=max_workers,
         )
 
-        full_arg_string = f"{Path(exe).name} {python_args}"
+        # exe=None: run paws.jobs.collect_outliers from the container image
+        script = Path(exe).name if exe else "-m paws.jobs.collect_outliers"
+        full_arg_string = f"{script} {python_args}"
 
         write_search_subfile(
             filename=str(sub_file_path),

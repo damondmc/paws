@@ -10,9 +10,9 @@ from astropy.io import fits
 
 from paws.analysis.sigmoid import SigmoidFitter
 from paws.definitions import phase_param_name
+from paws.jobs.weave_runner import determine_efficiency
 from paws.params.injections import InjectionParamGenerator
 from paws.params.models import PowerLawModel
-from paws.pipeline import determine_efficiency
 from paws.settings import Config, Target
 
 # Configure Logging

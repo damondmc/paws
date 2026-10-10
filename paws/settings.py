@@ -66,6 +66,15 @@ class Target(_Model):
         return SECONDS_PER_YEAR * (self.age + (freq - (self.age_break_freq - 1)) * self.age_slope)
 
 
+class FollowupThresholds(_Model):
+    """Thresholds a follow-up stage applies to the loudest candidate of each seed, computed from injections."""
+
+    injections: tuple[str, str]  # injection stages matching (previous stage, this stage)
+    excess_ratio_percentile: float  # % of injections the (2F-4) excess ratio threshold may lose
+    h1_l1_percentile: Optional[float]  # % of injections the H1/L1 excess-ratio window may lose; null: no H1/L1 excess-ratio window
+    bands: list[int]  # threshold band edges [Hz]: one excess ratio threshold / H1/L1 excess-ratio window per band
+
+
 class Stage(_Model):
     """One stage of the pipeline: a Weave run over all bands and the outliers collected from it."""
 
@@ -106,8 +115,8 @@ class Stage(_Model):
 
     # outliers
     keep: int  # candidates kept per seed
-    ratio_cut: Optional[str]  # file in the config dir: f_start f_end ratio ... per row
-    hl_window: Optional[str]  # file in the config dir: f_start f_end low high of log10 r_HL (v3 script)
+    thresholds: Optional[FollowupThresholds]  # follow-up of real candidates; null: injection or record-only stage
+    reuse: list[str]  # earlier stages whose Weave results are taken for seeds equal to theirs
     cluster: bool
     separate_saturated: bool
 
@@ -125,8 +134,10 @@ class Stage(_Model):
             raise ValueError(f"{self.name}: an injection stage needs inj_order")
         if self.sky_grid is None and self.n_sky != 1:
             raise ValueError(f"{self.name}: n_sky={self.n_sky} without a sky_grid")
-        if self.kind == "followup" and self.is_injection == bool(self.ratio_cut):
-            raise ValueError(f"{self.name}: a follow-up needs ratio_cut, an injection follow-up must not have one")
+        if self.is_injection and (self.thresholds is not None or self.reuse):
+            raise ValueError(f"{self.name}: an injection stage keeps every candidate and runs its own jobs")
+        if self.thresholds is not None and self.keep != 1:
+            raise ValueError(f"{self.name}: a thresholded follow-up keeps the loudest candidate per seed (keep: 1)")
         return self
 
     def taskname(self, target, freq):
@@ -140,19 +151,34 @@ class Stage(_Model):
 class Stages(_Model):
     target: str  # target yaml in the config dir
     stages: dict[str, Stage]
+    chains: dict[str, list[str]]  # follow-up chains: stage names in order
 
     @model_validator(mode="before")
     @classmethod
-    def _names(cls, data):
-        data = {k: v for k, v in data.items() if not k.startswith("x-")}  # YAML anchor blocks
-        data["stages"] = {k: {**v, "name": k} for k, v in data["stages"].items()}
+    def _drop_anchors_and_name_stages(cls, data):
+        data = {key: value for key, value in data.items() if not key.startswith("x-")}  # YAML anchor blocks
+        data["stages"] = {name: {**fields, "name": name} for name, fields in data["stages"].items()}
         return data
 
     @model_validator(mode="after")
-    def _prev_exists(self):
-        for s in self.stages.values():
-            if s.prev is not None and s.prev not in self.stages:
-                raise ValueError(f"{s.name}: prev stage {s.prev!r} is not defined")
+    def _references_exist(self):
+        for stage in self.stages.values():
+            if stage.prev is not None and stage.prev not in self.stages:
+                raise ValueError(f"{stage.name}: prev stage {stage.prev!r} is not defined")
+            for reused in stage.reuse:
+                if reused not in self.stages:
+                    raise ValueError(f"{stage.name}: reused stage {reused!r} is not defined")
+                source = self.stages[reused]
+                if (source.tcoh, source.order, source.n_sky) != (stage.tcoh, stage.order, stage.n_sky):
+                    raise ValueError(f"{stage.name}: cannot reuse {reused} (different tcoh, order or sky grid)")
+            if stage.thresholds is not None:
+                for injection_stage in stage.thresholds.injections:
+                    if injection_stage not in self.stages:
+                        raise ValueError(f"{stage.name}: injection stage {injection_stage!r} is not defined")
+        for chain, names in self.chains.items():
+            for name in names:
+                if name not in self.stages:
+                    raise ValueError(f"chain {chain}: stage {name!r} is not defined")
         return self
 
 
@@ -167,10 +193,12 @@ class Settings:
         self.stages_file = Stages.from_yaml(self.config_dir / "stages.yaml")
         self.target_file = self.config_dir / self.stages_file.target
         self.target = Target.from_yaml(self.target_file)
-        self._grids = {}
-        for s in self.stages_file.stages.values():
-            if s.sky_grid and len(self.sky_offsets(s)[0]) != s.n_sky:
-                raise ValueError(f"{s.name}: n_sky={s.n_sky} but {s.sky_grid} has {len(self.sky_offsets(s)[0])} points")
+        self._sky_grids = {}
+        for stage in self.stages_file.stages.values():
+            if stage.sky_grid:
+                n_grid_points = len(self.sky_offsets(stage)[0])
+                if n_grid_points != stage.n_sky:
+                    raise ValueError(f"{stage.name}: n_sky={stage.n_sky} but {stage.sky_grid} has {n_grid_points} points")
 
     def stage(self, name):
         try:
@@ -185,10 +213,10 @@ class Settings:
         """(d_alpha, d_delta) arrays of the stage's sky grid, or None for a single sky point."""
         if not stage.sky_grid:
             return None
-        return self._grid(stage.sky_grid)
-
-    def _grid(self, name):
-        return self._grids.setdefault(name, tuple(np.loadtxt(self.config_dir / name, unpack=True, ndmin=2)))
+        if stage.sky_grid not in self._sky_grids:
+            grid_path = self.config_dir / stage.sky_grid
+            self._sky_grids[stage.sky_grid] = tuple(np.loadtxt(grid_path, unpack=True, ndmin=2))
+        return self._sky_grids[stage.sky_grid]
 
     def config_path(self, name):
         return self.config_dir / name

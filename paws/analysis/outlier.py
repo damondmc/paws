@@ -1,4 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -7,10 +7,87 @@ from astropy.table import Table, vstack
 from tqdm import tqdm
 
 from paws.definitions import phase_param_name
-from paws.filepaths import PathManager
-from paws.io import get_spacing, make_dir
+from paws.filepaths import PathManager, make_dir
+from paws.fits_io import weave_header_spacing, weave_template_spacing
 
 from .clustering import clustering
+
+
+def read_loudest_row(weave_result_path):
+    """First row of a Weave toplist (toplists are sorted by mean2F)."""
+    with fits.open(weave_result_path, memmap=True) as hdul:
+        toplist = hdul[1].data
+        if toplist is None or len(toplist) == 0:
+            raise ValueError(f"empty Weave toplist: {weave_result_path}")
+        return np.array(toplist[:1])
+
+
+def loudest_rows(result_files_per_seed, n_threads):
+    """Loudest candidate of each seed over its Weave result files (one equal-length file list per seed).
+    Reads only row 0 of each file, which gives the same result as make_outlier(num_toplist=1)."""
+    n_seeds = len(result_files_per_seed)
+    all_files = [path for seed_files in result_files_per_seed for path in seed_files]
+    with ThreadPoolExecutor(n_threads) as executor:
+        rows = np.concatenate(list(executor.map(read_loudest_row, all_files))).reshape(n_seeds, -1)
+    return rows[np.arange(n_seeds), rows["mean2F"].argmax(axis=1)]
+
+
+def make_outlier_table(data, mean2f_th, num_toplist):
+    """The first num_toplist candidates of a toplist with mean2F >= mean2f_th, plus a "mean2F threshold" column."""
+    data = data[:num_toplist]
+    mask = data["mean2F"] >= mean2f_th
+    data = Table(data[mask])
+    data.add_column(mean2f_th * np.ones(len(data)), name="mean2F threshold")
+    return data
+
+
+def make_injection_table(inj_param, search_param):
+    """(loudest search candidate, injection parameters with h0 added) of one Weave run with an injection."""
+    inj_param = Table(inj_param)
+    aplus, across = inj_param["aPlus"], inj_param["aCross"]
+    h0 = aplus + np.sqrt(aplus**2 - across**2)
+    inj_param.add_column(h0 * np.ones(len(inj_param)), name="h0")
+    if "refTime_s" in inj_param.colnames:
+        inj_param.rename_column("refTime_s", "refTime")
+    search_param = Table(search_param)[:1]
+    return search_param, inj_param
+
+
+def read_job_outliers(job):
+    """Outliers of one Weave result file. job: (index, job index, path, mean2F threshold, num_toplist,
+    freq_deriv_order, read injections). Returns (index, job index, outlier table, injection table, spacing,
+    is saturated); the tables and spacing are None when the file is missing."""
+    i, job_idx, file_path, th, num_toplist, freq_deriv_order, read_inj = job
+    try:
+        # one open per file: toplist, header spacing and injections
+        with fits.open(file_path) as hdul:
+            spacing = weave_header_spacing(hdul[0].header, freq_deriv_order)
+            outliers = make_outlier_table(hdul[1].data, th, num_toplist)
+            is_sat = int(len(outliers) >= num_toplist)
+            injections = None
+            if read_inj:
+                outliers, injections = make_injection_table(hdul[2].data, outliers)
+        return (i, job_idx, outliers, injections, spacing, is_sat)
+    except FileNotFoundError:
+        return (i, job_idx, None, None, None, 0)
+
+
+def read_jobs_with_threads(jobs, n_threads):
+    """read_job_outliers of each job, in job order."""
+    with ThreadPoolExecutor(max_workers=n_threads) as executor:
+        return list(executor.map(read_job_outliers, jobs))
+
+
+def read_jobs(jobs, n_processes, n_threads, desc):
+    """read_job_outliers of each job, in job order, over n_processes processes of n_threads threads each."""
+    if n_processes == 1:
+        with ThreadPoolExecutor(max_workers=n_threads) as executor:
+            return list(tqdm(executor.map(read_job_outliers, jobs), total=len(jobs), desc=desc))
+    chunk_size = max(1, -(-len(jobs) // (4 * n_processes)))  # ~4 chunks per process, for the progress bar
+    chunks = [jobs[start:start + chunk_size] for start in range(0, len(jobs), chunk_size)]
+    with ProcessPoolExecutor(max_workers=n_processes) as executor:
+        chunk_results = executor.map(read_jobs_with_threads, chunks, [n_threads] * len(chunks))
+        return [result for results in tqdm(chunk_results, total=len(chunks), desc=desc) for result in results]
 
 
 class ResultAnalysisManager:
@@ -30,35 +107,6 @@ class ResultAnalysisManager:
         self.target = target
         self.paths = PathManager(config, target)
 
-    def make_outlier_table(self, data, mean2f_th, num_toplist=1000):
-        """Filters data to create an outlier table."""
-        # Read and limit the data to the top entries
-        data = data[:num_toplist]
-
-        # Mask data with mean 2F values greater than the threshold
-        mask = data["mean2F"] >= mean2f_th
-        data = Table(data[mask])
-        data.add_column(mean2f_th * np.ones(len(data)), name="mean2F threshold")
-
-        return data
-
-    def make_injection_table(self, inj_param, search_param):
-        """Creates a table comparing injections with search results."""
-        inj_param = Table(inj_param)
-
-        # Calculate h0 from aPlus and aCross
-        aplus, across = inj_param["aPlus"], inj_param["aCross"]
-        h0 = aplus + np.sqrt(aplus**2 - across**2)
-        inj_param.add_column(h0 * np.ones(len(inj_param)), name="h0")
-
-        # Rename reference time if exists
-        if "refTime_s" in inj_param.colnames:
-            inj_param.rename_column("refTime_s", "refTime")
-
-        search_param = Table(search_param)[:1]
-
-        return search_param, inj_param
-
     def _collect_outlier_data(
         self,
         taskname,
@@ -70,12 +118,13 @@ class ResultAnalysisManager:
         freq_deriv_order,
         n_sky=1,
         work_in_local_dir=False,
+        n_processes=1,
         max_workers=32,
         read_inj=False,
         separate_saturated=False,
         desc="Processing",
     ):
-        """Central engine for multithreaded FITS reading and outlier filtering."""
+        """Central engine for parallel FITS reading and outlier filtering."""
         # 1. Handle scalar vs array thresholds
         if np.isscalar(mean2f_th):
             thresholds = [mean2f_th] * len(job_indices)
@@ -91,43 +140,14 @@ class ResultAnalysisManager:
         info_list = []  # Stores (freq, job_idx, n_outliers, is_saturated)
         max_spacing = {}
 
-        # 2. Universal Worker Function
-        def _worker(args):
-            i, job_idx, th, worker_read_inj = args
+        # 2. Read every result file (n_processes x max_workers in parallel), results in job order
+        jobs = []
+        for i, (job_idx, th) in enumerate(zip(job_indices, thresholds)):
             file_path = self.paths.weave_output_file(freq, taskname, job_idx, stage)
             if work_in_local_dir:
                 file_path = Path(file_path).name
-
-            try:
-                weave_data = fits.getdata(file_path, 1)
-                spacing = get_spacing(file_path, freq_deriv_order)
-
-                _outlier = self.make_outlier_table(weave_data, th, num_toplist)
-                is_sat = int(len(_outlier) >= num_toplist)
-
-                # Handle injections
-                _inj_param = None
-                if worker_read_inj and _outlier is not None:
-                    inj_data = fits.getdata(file_path, 2)
-                    _outlier, _inj_param = self.make_injection_table(inj_data, _outlier)
-
-                return (i, job_idx, _outlier, _inj_param, spacing, is_sat)
-            except FileNotFoundError:
-                return (i, job_idx, None, None, None, 0)
-
-        # 3. Multithreading Queue
-        job_args = [
-            (i, idx, th, read_inj)
-            for i, idx, th in zip(range(len(job_indices)), job_indices, thresholds)
-        ]
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            results = list(
-                tqdm(
-                    executor.map(_worker, job_args),
-                    total=len(job_args),
-                    desc=f"{desc} {freq}Hz",
-                )
-            )
+            jobs.append((i, job_idx, file_path, th, num_toplist, freq_deriv_order, read_inj))
+        results = read_jobs(jobs, n_processes, max_workers, f"{desc} {freq}Hz")
 
         # 4. Safe Sequential Unpacking
         # Group results: 1 item per group when n_sky=1, n_sky items per parameter point otherwise.
@@ -274,7 +294,7 @@ class ResultAnalysisManager:
         cluster_hdul.append(info_clustered_hdu)
 
         # 5. File Path Logic
-        outlier_file_path = self.paths.outlier_file(freq, taskname, stage, cluster=True)
+        outlier_file_path = self.paths.outlier_file(freq, taskname, stage, cluster=True, location="home")
 
         if work_in_local_dir:
             outlier_file_path = Path(outlier_file_path).name
@@ -288,6 +308,7 @@ class ResultAnalysisManager:
         freq,
         mean2f_th,
         n_jobs,
+        n_processes,
         num_toplist=1000,
         stage="search",
         freq_deriv_order=2,
@@ -302,6 +323,7 @@ class ResultAnalysisManager:
         """
         Unified engine to collect results and write FITS files for Search, Injection, or Follow-up.
 
+        n_processes: processes reading the result files, each with max_workers threads.
         param_indices: optional 0-based indices of the parameter points to
         analyse (None = all n_jobs points). Each point owns n_sky consecutive
         Weave jobs, so only the result files of the selected points are read,
@@ -347,6 +369,7 @@ class ResultAnalysisManager:
                 freq_deriv_order,
                 n_sky=n_sky,
                 work_in_local_dir=work_in_local_dir,
+                n_processes=n_processes,
                 max_workers=max_workers,
                 read_inj=is_injection,
                 separate_saturated=separate_saturated,
@@ -422,7 +445,7 @@ class ResultAnalysisManager:
         # 8. Write Initial File
         outlier_hdul = fits.HDUList(hdus)
         outlier_file_path = self.paths.outlier_file(
-            freq, taskname, stage, cluster=False
+            freq, taskname, stage, cluster=False, location="home"
         )
         if work_in_local_dir:
             outlier_file_path = Path(outlier_file_path).name
@@ -454,84 +477,37 @@ class ResultAnalysisManager:
         print(f"Finished writing {stage} result for {freq} Hz")
         return outlier_file_path
 
-    # def ensemble_followup_result(self, freq, taskname, stage, inj_stage, outlier_file_path_list, inj_outlier_file_path_list,
-    #                              mean2f_ratio_list, num_toplist_list,
-    #                              final_stage, cluster=False, work_in_local_dir=False):
-    #     """Combines results from multiple follow-up stages into one summary FITS file."""
-    #     n_inj_table = len(inj_outlier_file_path_list)
-    #     n_out_table = len(outlier_file_path_list)
+    def write_loudest_outliers(self, taskname, freq, stage, freq_deriv_order, n_seeds, loudest_per_seed, passed,
+                               mean2f_threshold, spacing_files):
+        """
+        Unclustered and clustered outlier files of a stage collected as the loudest candidate per seed
+        (see loudest_rows); INFO has one row per seed.
 
-    #     primary_hdu = fits.PrimaryHDU()
-    #     outlier_hdul = fits.HDUList()
+        passed: seeds kept as outliers. spacing_files: Weave result files whose template spacings are
+        combined (maximum) into the primary header.
+        """
+        spacing = {}
+        for path in spacing_files:
+            for key, value in weave_template_spacing(path, freq_deriv_order).items():
+                spacing[key] = max(spacing.get(key, 0), value)
+        primary_hdu = fits.PrimaryHDU()
+        for key, value in spacing.items():
+            primary_hdu.header[f"HIERARCH {key}"] = value
 
-    #     # Metadata
-    #     try:
-    #         # Try to get threshold from the first available file
-    #         source_file = outlier_file_path_list[0] if n_out_table > 0 else (inj_outlier_file_path_list[0] if n_inj_table > 0 else None)
-    #         if source_file:
-    #             mean2f_th = fits.getheader(source_file)['HIERARCH mean2F_th']
-    #             primary_hdu.header['HIERARCH mean2F_th'] = mean2f_th
-    #     except (IndexError, KeyError, FileNotFoundError):
-    #         print("Warning: Unable to retrieve mean2F_th from header.")
-    #         pass
+        outlier_table = Table(loudest_per_seed[passed])
+        outlier_table.add_column(mean2f_threshold[passed], name="mean2F threshold")
+        hdu_name = f"{stage}_outlier"
+        if passed.any():
+            outlier_hdu = fits.BinTableHDU(data=outlier_table, name=hdu_name)
+        else:
+            outlier_hdu = fits.BinTableHDU(name=hdu_name)
 
-    #     primary_hdu.header['HIERARCH injection_test'] = (n_inj_table != 0)
+        info_columns = ("freq", "jobIndex", "outliers", "isSaturated")
+        info = np.recarray((n_seeds,), dtype=[(column, ">f8") for column in info_columns])
+        info["freq"], info["jobIndex"], info["outliers"], info["isSaturated"] = freq, np.arange(n_seeds), passed, 0
 
-    #     # Record ratios and top lists for every stage in the header
-    #     # We iterate up to the max number of stages provided
-    #     max_stages = max(n_inj_table, n_out_table)
-
-    #     # Note: The loop index 'i' corresponds to the follow-up stage index.
-    #     # Typically stage lists include the initial search, so we might offset by 1 if 'stage' list includes 'search' at index 0.
-    #     for i in range(max_stages):
-    #         # Check bounds for ratio list
-    #         if i < len(mean2f_ratio_list):
-    #             # We use stage[i+1] assuming the lists passed in include the initial search stage name at 0
-    #             stage_name = stage[i+1] if (i+1) < len(stage) else f"stage_{i+1}"
-    #             primary_hdu.header[f'HIERARCH mean2F_ratio_{stage_name}'] = mean2f_ratio_list[i]
-
-    #         # Check bounds for top list
-    #         if i < len(num_toplist_list):
-    #             stage_name = stage[i+1] if (i+1) < len(stage) else f"stage_{i+1}"
-    #             primary_hdu.header[f'HIERARCH numTopList_{stage_name}'] = num_toplist_list[i]
-
-    #     outlier_hdul.append(primary_hdu)
-
-    #     # 1. Append Injection Follow-up Stages
-    #     for i in range(n_inj_table):
-    #         try:
-    #             # Outliers
-    #             data = fits.getdata(inj_outlier_file_path_list[i], extname=inj_stage[i]+'_outlier')
-    #             outlier_hdul.append(fits.BinTableHDU(data=data, name=inj_stage[i]+'_outlier'))
-
-    #             # Injections
-    #             data = fits.getdata(inj_outlier_file_path_list[i], extname='inj')
-    #             outlier_hdul.append(fits.BinTableHDU(data=data, name=inj_stage[i]+'_inj'))
-
-    #             # Info
-    #             data = fits.getdata(inj_outlier_file_path_list[i], extname='info')
-    #             outlier_hdul.append(fits.BinTableHDU(data=data, name=inj_stage[i]+'_info'))
-    #         except FileNotFoundError:
-    #             print(f"Warning: Missing injection file {inj_outlier_file_path_list[i]}")
-
-    #     # 2. Append Search Follow-up Stages
-    #     for i in range(n_out_table):
-    #         try:
-    #             data = fits.getdata(outlier_file_path_list[i], extname=stage[i]+'_outlier')
-    #             outlier_hdul.append(fits.BinTableHDU(data=data, name=stage[i]+'_outlier'))
-
-    #             data = fits.getdata(outlier_file_path_list[i], extname='info')
-    #             outlier_hdul.append(fits.BinTableHDU(data=data, name=stage[i]+'_info'))
-    #         except FileNotFoundError:
-    #             print(f"Warning: Missing outlier file {outlier_file_path_list[i]}")
-
-    #     # Write Final Ensemble File
-    #     outlier_file_path = self.paths.outlier_file(freq, taskname, final_stage, cluster=cluster)
-
-    #     if work_in_local_dir:
-    #         outlier_file_path = Path(outlier_file_path).name
-    #     else:
-    #         make_dir([outlier_file_path])
-
-    #     outlier_hdul.writeto(outlier_file_path, overwrite=True)
-    #     return outlier_file_path
+        path = self.paths.outlier_file(freq, taskname, stage, cluster=False, location="home")
+        make_dir([path])
+        fits.HDUList([primary_hdu, outlier_hdu, fits.BinTableHDU(data=info, name="info")]).writeto(path, overwrite=True)
+        primary_hdu.header["HIERARCH cluster_n_spacing"] = self.config.cluster_n_spacing
+        return self._write_clustered_results(freq, taskname, stage, outlier_hdu.data, freq_deriv_order, primary_hdu)

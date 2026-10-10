@@ -1,0 +1,9 @@
+name: TestTarget
+age: 300
+age_break_freq: 200
+age_slope: 0.5
+alpha: 4.6498506327882163
+delta: -0.5062820546075105
+dalpha: 0
+ddelta: 0
+radius: 0.0375

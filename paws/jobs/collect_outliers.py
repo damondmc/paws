@@ -55,6 +55,7 @@ def main():
         args.freq,
         mean2f_th,
         n_jobs,
+        n_processes=1,
         num_toplist=args.num_toplist,
         stage=args.stage,
         freq_deriv_order=args.freq_deriv_order,
