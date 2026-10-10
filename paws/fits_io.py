@@ -29,18 +29,25 @@ def weave_header_spacing(header, freq_deriv_order):
     templates_per_param = []
 
     if n_params > 0:
-        templates_per_param.append(int(cumulative_templates[0] / cumulative_templates[-1]))  # f0
+        # f0
+        templates_per_param.append(
+            int(cumulative_templates[0] / cumulative_templates[-1])
+        )
         if n_params > 1:
             templates_per_param.append(cumulative_templates[1])  # f1
             for i in range(2, n_params):
-                templates_per_param.append(int(cumulative_templates[i] / cumulative_templates[i - 1]))
+                templates_per_param.append(
+                    int(cumulative_templates[i] / cumulative_templates[i - 1])
+                )
 
     spacing = {}
     for i in range(n_params):
         searched_range = header.get(f"PROGARG {freq_param_names[i].upper()}", None)
         if searched_range:
             start, stop = searched_range.split(",")
-            spacing[spacing_names[i]] = (float(stop) - float(start)) / templates_per_param[i]
+            spacing[spacing_names[i]] = (
+                float(stop) - float(start)
+            ) / templates_per_param[i]
     return spacing
 
 

@@ -24,7 +24,13 @@ def seed_outlier_file(settings, paths, stage, freq):
     """Previous-stage outlier file holding the seeds of `stage`."""
     prev_stage = settings.prev(stage)
     prev_taskname = prev_stage.taskname(settings.target, freq)
-    return paths.outlier_file(freq, prev_taskname, prev_stage.name, cluster=not stage.prev_sat, location="existing")
+    return paths.outlier_file(
+        freq,
+        prev_taskname,
+        prev_stage.name,
+        cluster=not stage.prev_sat,
+        location="existing",
+    )
 
 
 def read_seed_rows(settings, paths, stage, freq):
@@ -41,7 +47,9 @@ def read_seed_rows(settings, paths, stage, freq):
         return None, None
     if stage.n_inj_max is not None:
         seed_rows = seed_rows[: stage.n_inj_max]
-        injection_rows = None if injection_rows is None else injection_rows[: stage.n_inj_max]
+        injection_rows = (
+            None if injection_rows is None else injection_rows[: stage.n_inj_max]
+        )
     return seed_rows, injection_rows
 
 
@@ -53,8 +61,10 @@ SEED_KEY_COLUMNS = ("freq", "f1dot", "f2dot")
 @dataclass(frozen=True)
 class SeedPlan:
     keys: np.ndarray  # (n_seeds, 3): freq, f1dot, f2dot of each seed
-    source_stage: np.ndarray  # (n_seeds,) stage name whose Weave run holds the seed's results
-    first_job: np.ndarray  # (n_seeds,) first Weave job (result file index) of the seed in that run
+    # (n_seeds,) stage name whose Weave run holds the seed's results
+    source_stage: np.ndarray
+    # (n_seeds,) first Weave job (result file index) of the seed in that run
+    first_job: np.ndarray
 
     def own_runs(self, stage_name):
         """Indices of the seeds that run in stage_name itself."""
@@ -62,12 +72,19 @@ class SeedPlan:
 
 
 def seed_keys(rows):
-    return np.array([[float(row[column]) for column in SEED_KEY_COLUMNS] for row in rows], dtype=float).reshape(-1, 3)
+    return np.array(
+        [[float(row[column]) for column in SEED_KEY_COLUMNS] for row in rows],
+        dtype=float,
+    ).reshape(-1, 3)
 
 
 def default_seed_plan(stage, seed_rows):
     n_seeds = len(seed_rows)
-    return SeedPlan(seed_keys(seed_rows), np.full(n_seeds, stage.name), np.arange(n_seeds) * stage.n_sky + 1)
+    return SeedPlan(
+        seed_keys(seed_rows),
+        np.full(n_seeds, stage.name),
+        np.arange(n_seeds) * stage.n_sky + 1,
+    )
 
 
 def selected_seed_rows(settings, paths, stage, freq):
@@ -80,7 +97,11 @@ def selected_seed_rows(settings, paths, stage, freq):
         thresholds = stage_thresholds(settings, stage)
         if thresholds.seed_h1_l1_window is not None:
             window = thresholds.seed_h1_l1_window_at(freq)
-            seed_rows = seed_rows[inside_h1_l1_window(window, seed_rows["mean2F_H1"], seed_rows["mean2F_L1"])]
+            seed_rows = seed_rows[
+                inside_h1_l1_window(
+                    window, seed_rows["mean2F_H1"], seed_rows["mean2F_L1"]
+                )
+            ]
     return seed_rows if len(seed_rows) else None
 
 
@@ -96,7 +117,11 @@ def load_seed_plan(settings, stage, freq):
     with np.load(path) as saved:
         if f"{freq}_key" not in saved.files:
             return None
-        return SeedPlan(saved[f"{freq}_key"], saved[f"{freq}_source_stage"], saved[f"{freq}_first_job"])
+        return SeedPlan(
+            saved[f"{freq}_key"],
+            saved[f"{freq}_source_stage"],
+            saved[f"{freq}_first_job"],
+        )
 
 
 def save_seed_plans(settings, stage, plan_by_band):
@@ -117,8 +142,10 @@ def result_files_per_seed(paths, settings, stage, freq, plan):
     for source_name, first_job in zip(plan.source_stage, plan.first_job):
         source = settings.stage(str(source_name))
         taskname = source.taskname(settings.target, freq)
-        files_per_seed.append([
-            paths.weave_output_file(freq, taskname, job, source.name)
-            for job in range(int(first_job), int(first_job) + stage.n_sky)
-        ])
+        files_per_seed.append(
+            [
+                paths.weave_output_file(freq, taskname, job, source.name)
+                for job in range(int(first_job), int(first_job) + stage.n_sky)
+            ]
+        )
     return files_per_seed

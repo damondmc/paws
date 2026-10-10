@@ -48,8 +48,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="Calculate 95% Upper Limit via Injection."
     )
-    parser.add_argument("--config_file", type=str, required=True, help="Path to config.yaml")
-    parser.add_argument("--target_file", type=str, required=True, help="Path to the target yaml")
+    parser.add_argument(
+        "--config_file", type=str, required=True, help="Path to config.yaml"
+    )
+    parser.add_argument(
+        "--target_file", type=str, required=True, help="Path to the target yaml"
+    )
     parser.add_argument(
         "--taskname", type=str, default="GalacticCenter_upperlimit_TCoh5_O2_97Hz"
     )
@@ -150,7 +154,9 @@ def main():
     f0_band = config.f0_band
 
     # 2. Initialize Managers
-    model = PowerLawModel(nc_min=config.nc_min, nc_max=config.nc_max, tau=target.tau(freq))
+    model = PowerLawModel(
+        nc_min=config.nc_min, nc_max=config.nc_max, tau=target.tau(freq)
+    )
     injection_generator = InjectionParamGenerator(
         model=model, ref_time=ref_time, f0_band=f0_band
     )

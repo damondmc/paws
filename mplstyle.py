@@ -1,5 +1,6 @@
-import matplotlib
 import os
+
+import matplotlib
 
 # --- The Updated Style Content ---
 style_content = """

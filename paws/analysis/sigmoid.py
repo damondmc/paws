@@ -1,6 +1,6 @@
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import curve_fit
-import matplotlib.pyplot as plt
 
 
 class SigmoidFitter:
@@ -80,9 +80,8 @@ class SigmoidFitter:
 
         # Propagate errors using covariance matrix
         k, x0 = self.popt
-        dk_da = (
-            -1.0 / k**2 * np.log(percentile / (1.0 - percentile))
-        )  # Partial derivative wrt k
+        # Partial derivative wrt k
+        dk_da = -1.0 / k**2 * np.log(percentile / (1.0 - percentile))
         dk_db = 1.0  # Partial derivative wrt x0
 
         # Variance of x

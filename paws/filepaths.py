@@ -164,10 +164,28 @@ class PathManager:
         """
         if location == "existing":
             home_path = self.outlier_file(freq, taskname, stage, cluster, "home")
-            return home_path if home_path.exists() else self.outlier_file(freq, taskname, stage, cluster, "osdf")
+            return (
+                home_path
+                if home_path.exists()
+                else self.outlier_file(freq, taskname, stage, cluster, "osdf")
+            )
         roots = {"home": self.home_dir, "osdf": self.osdf_dir / "o4ab"}
         if location not in roots:
-            raise ValueError(f"location must be 'home', 'osdf' or 'existing', not {location!r}")
-        base = roots[location] / "results" / stage / self.target_name / self.sft_source / str(freq) / "Outliers"
-        filename = f"{taskname}_outlier_clustered.fts" if cluster else f"{taskname}_outlier.fts"
+            raise ValueError(
+                f"location must be 'home', 'osdf' or 'existing', not {location!r}"
+            )
+        base = (
+            roots[location]
+            / "results"
+            / stage
+            / self.target_name
+            / self.sft_source
+            / str(freq)
+            / "Outliers"
+        )
+        filename = (
+            f"{taskname}_outlier_clustered.fts"
+            if cluster
+            else f"{taskname}_outlier.fts"
+        )
         return base / filename

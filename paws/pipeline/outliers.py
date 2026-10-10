@@ -42,7 +42,9 @@ SEEDS_PER_CHUNK = 2000  # loudest rows are read and cached in chunks of this man
 
 def total_semicoherent_templates(context, freq, n_jobs):
     def templates_of_job(job_index):
-        result_file = context.paths.weave_output_file(freq, context.taskname(freq), job_index, context.stage.name)
+        result_file = context.paths.weave_output_file(
+            freq, context.taskname(freq), job_index, context.stage.name
+        )
         return fits.getheader(result_file)["NSEMITPL"]
 
     with ThreadPoolExecutor(N_THREADS) as executor:
@@ -52,9 +54,16 @@ def total_semicoherent_templates(context, freq, n_jobs):
 def make_outlier_kwargs(context):
     stage = context.stage
     return dict(
-        num_toplist=stage.keep, stage=stage.name, freq_deriv_order=stage.order, n_sky=stage.n_sky,
-        cluster=stage.cluster, work_in_local_dir=False, separate_saturated=stage.separate_saturated,
-        is_injection=stage.is_injection, n_processes=N_PROCESSES, max_workers=N_THREADS,
+        num_toplist=stage.keep,
+        stage=stage.name,
+        freq_deriv_order=stage.order,
+        n_sky=stage.n_sky,
+        cluster=stage.cluster,
+        work_in_local_dir=False,
+        separate_saturated=stage.separate_saturated,
+        is_injection=stage.is_injection,
+        n_processes=N_PROCESSES,
+        max_workers=N_THREADS,
     )
 
 
@@ -63,7 +72,11 @@ def outliers_search(context, freq):
     n_templates = total_semicoherent_templates(context, freq, n_jobs)
     mean2f_threshold = search_mean2f_threshold(n_templates, context.stage.n_seg)
     context.result_manager.make_outlier(
-        context.taskname(freq), freq, mean2f_threshold, n_jobs, **make_outlier_kwargs(context)
+        context.taskname(freq),
+        freq,
+        mean2f_threshold,
+        n_jobs,
+        **make_outlier_kwargs(context),
     )
 
 
@@ -74,7 +87,11 @@ def outliers_injection(context, freq):
         return
     mean2f_threshold = fits.getval(search_file, "mean2F_th", 0)
     context.result_manager.make_outlier(
-        context.taskname(freq), freq, mean2f_threshold, context.stage.n_inj, **make_outlier_kwargs(context)
+        context.taskname(freq),
+        freq,
+        mean2f_threshold,
+        context.stage.n_inj,
+        **make_outlier_kwargs(context),
     )
 
 
@@ -83,7 +100,11 @@ def outliers_injection_followup(context, freq):
     if seed_rows is None or len(seed_rows) == 0:
         return
     context.result_manager.make_outlier(
-        context.taskname(freq), freq, np.zeros(len(seed_rows)), len(seed_rows), **make_outlier_kwargs(context)
+        context.taskname(freq),
+        freq,
+        np.zeros(len(seed_rows)),
+        len(seed_rows),
+        **make_outlier_kwargs(context),
     )
 
 
@@ -95,18 +116,28 @@ def band_seed_plan(context, freq, seed_rows):
     plan = load_seed_plan(context.settings, context.stage, freq)
     if plan is None:
         if context.stage.reuse:
-            plan = reuse.build_seed_plan(context.settings, context.paths, context.stage, freq, seed_rows)
+            plan = reuse.build_seed_plan(
+                context.settings, context.paths, context.stage, freq, seed_rows
+            )
         else:
             plan = default_seed_plan(context.stage, seed_rows)
         save_seed_plans(context.settings, context.stage, {freq: plan})
     if len(plan.keys) != len(seed_rows):
-        raise ValueError(f"{context.stage.name} {freq} Hz: seed plan has {len(plan.keys)} seeds, "
-                         f"the previous stage {len(seed_rows)}; delete the stale seed_plan.npz entry")
+        raise ValueError(
+            f"{context.stage.name} {freq} Hz: seed plan has {len(plan.keys)} seeds, "
+            f"the previous stage {len(seed_rows)}; delete the stale seed_plan.npz entry"
+        )
     return plan
 
 
 def loudest_cache_path(context, freq, first_seed):
-    return context.config.home_dir / "results" / context.stage.name / "loudest" / f"{freq}_{first_seed}.npy"
+    return (
+        context.config.home_dir
+        / "results"
+        / context.stage.name
+        / "loudest"
+        / f"{freq}_{first_seed}.npy"
+    )
 
 
 def cache_loudest_chunk(chunk):
@@ -135,40 +166,70 @@ def collect_thresholded_followup(context, bands):
         if seed_rows is None:
             continue
         plan = band_seed_plan(context, freq, seed_rows)
-        files_per_seed = result_files_per_seed(context.paths, context.settings, stage, freq, plan)
+        files_per_seed = result_files_per_seed(
+            context.paths, context.settings, stage, freq, plan
+        )
         seeds_by_band[freq], files_by_band[freq] = seed_rows, files_per_seed
         for first_seed in range(0, len(seed_rows), SEEDS_PER_CHUNK):
             stop_seed = min(first_seed + SEEDS_PER_CHUNK, len(seed_rows))
             label = f"{stage.name} {freq} Hz seeds {first_seed}-{stop_seed}"
-            chunks.append((loudest_cache_path(context, freq, first_seed), files_per_seed[first_seed:stop_seed], label))
+            chunks.append(
+                (
+                    loudest_cache_path(context, freq, first_seed),
+                    files_per_seed[first_seed:stop_seed],
+                    label,
+                )
+            )
     chunks.sort(key=lambda chunk: -len(chunk[1]))  # largest first
     n_all_seeds = sum(len(rows) for rows in seeds_by_band.values())
-    print(f"{stage.name}: {len(seeds_by_band)} bands, {n_all_seeds:,d} seeds, {len(chunks)} chunks", flush=True)
+    print(
+        f"{stage.name}: {len(seeds_by_band)} bands, {n_all_seeds:,d} seeds, {len(chunks)} chunks",
+        flush=True,
+    )
     with Pool(N_PROCESSES) as pool:
         for _ in pool.imap_unordered(cache_loudest_chunk, chunks):
             pass
 
     n_seeds = n_passed = 0
     for freq, seed_rows in seeds_by_band.items():
-        loudest_per_seed = np.concatenate([
-            np.load(loudest_cache_path(context, freq, first_seed))
-            for first_seed in range(0, len(seed_rows), SEEDS_PER_CHUNK)
-        ])
-        mean2f_threshold = excess_ratio_to_mean2f_threshold(thresholds.excess_ratio_at(freq), seed_rows["mean2F"])
+        loudest_per_seed = np.concatenate(
+            [
+                np.load(loudest_cache_path(context, freq, first_seed))
+                for first_seed in range(0, len(seed_rows), SEEDS_PER_CHUNK)
+            ]
+        )
+        mean2f_threshold = excess_ratio_to_mean2f_threshold(
+            thresholds.excess_ratio_at(freq), seed_rows["mean2F"]
+        )
         passed = loudest_per_seed["mean2F"] >= mean2f_threshold
         if thresholds.h1_l1_window is not None:
             passed &= inside_h1_l1_window(
-                thresholds.h1_l1_window_at(freq), loudest_per_seed["mean2F_H1"], loudest_per_seed["mean2F_L1"]
+                thresholds.h1_l1_window_at(freq),
+                loudest_per_seed["mean2F_H1"],
+                loudest_per_seed["mean2F_L1"],
             )
         files_per_seed = files_by_band[freq]
-        spacing_files = [files[0] for files in files_per_seed[:: max(1, len(files_per_seed) // 10)][:10]]
+        spacing_files = [
+            files[0]
+            for files in files_per_seed[:: max(1, len(files_per_seed) // 10)][:10]
+        ]
         context.result_manager.write_loudest_outliers(
-            context.taskname(freq), freq, stage.name, stage.order, len(seed_rows), loudest_per_seed, passed,
-            mean2f_threshold, spacing_files,
+            context.taskname(freq),
+            freq,
+            stage.name,
+            stage.order,
+            len(seed_rows),
+            loudest_per_seed,
+            passed,
+            mean2f_threshold,
+            spacing_files,
         )
         n_seeds += len(seed_rows)
         n_passed += int(passed.sum())
-        print(f"{stage.name} {freq} Hz: {len(seed_rows)} seeds, {int(passed.sum())} pass", flush=True)
+        print(
+            f"{stage.name} {freq} Hz: {len(seed_rows)} seeds, {int(passed.sum())} pass",
+            flush=True,
+        )
     print(f"{stage.name}: {n_passed:,d} of {n_seeds:,d} seeds pass")
 
 
@@ -193,7 +254,9 @@ def collect_stage_outliers(settings, stage_name, bands):
         collect_thresholded_followup(context, bands)
         return
     if stage.kind not in OUTLIER_COLLECTOR_BY_KIND:
-        raise SystemExit(f"{stage.name}: {stage.kind} jobs write their own outlier files")
+        raise SystemExit(
+            f"{stage.name}: {stage.kind} jobs write their own outlier files"
+        )
     for freq in tqdm(bands, desc=f"{stage.name} outliers"):
         OUTLIER_COLLECTOR_BY_KIND[stage.kind](context, freq)
 
@@ -205,11 +268,26 @@ def outlier_collection_dag(context, freq):
         return None
     config_url, target_url = context.settings.job_config_urls()
     return context.workflow_manager.make_outlier_dag(
-        config_url, target_url, context.taskname(freq), freq, stage.name, stage.order, len(seed_rows),
-        seed_outlier_file(context.settings, context.paths, stage, freq), None,
-        num_toplist=stage.keep, n_sky=stage.n_sky, zero_threshold=True, cluster=stage.cluster,
-        separate_saturated=False, is_injection=True, max_workers=N_THREADS, request_memory="8GB",
-        request_disk="8GB", request_cpu=1, image=context.settings.image_url(stage),
+        config_url,
+        target_url,
+        context.taskname(freq),
+        freq,
+        stage.name,
+        stage.order,
+        len(seed_rows),
+        seed_outlier_file(context.settings, context.paths, stage, freq),
+        None,
+        num_toplist=stage.keep,
+        n_sky=stage.n_sky,
+        zero_threshold=True,
+        cluster=stage.cluster,
+        separate_saturated=False,
+        is_injection=True,
+        max_workers=N_THREADS,
+        request_memory="8GB",
+        request_disk="8GB",
+        request_cpu=1,
+        image=context.settings.image_url(stage),
     )
 
 
@@ -218,9 +296,13 @@ def make_stage_outlier_dags(settings, stage_name, bands):
     context = StageContext(settings, stage_name)
     stage = context.stage
     if not (stage.kind == "followup" and stage.is_injection):
-        raise SystemExit("Condor outlier collection applies to injection follow-ups only (the job keeps every candidate)")
+        raise SystemExit(
+            "Condor outlier collection applies to injection follow-ups only (the job keeps every candidate)"
+        )
     weave_list_path = dag_list_path(context, bands)
-    list_path = weave_list_path.with_name(weave_list_path.name.replace("_dag", "_outlier_dag"))
+    list_path = weave_list_path.with_name(
+        weave_list_path.name.replace("_dag", "_outlier_dag")
+    )
     with open(list_path, "w") as dag_list:
         for freq in tqdm(bands or stage.freqs, desc=f"{stage.name} outlier DAGs"):
             dag_file = outlier_collection_dag(context, freq)

@@ -28,7 +28,9 @@ def loudest_rows(result_files_per_seed, n_threads):
     n_seeds = len(result_files_per_seed)
     all_files = [path for seed_files in result_files_per_seed for path in seed_files]
     with ThreadPoolExecutor(n_threads) as executor:
-        rows = np.concatenate(list(executor.map(read_loudest_row, all_files))).reshape(n_seeds, -1)
+        rows = np.concatenate(list(executor.map(read_loudest_row, all_files))).reshape(
+            n_seeds, -1
+        )
     return rows[np.arange(n_seeds), rows["mean2F"].argmax(axis=1)]
 
 
@@ -82,12 +84,23 @@ def read_jobs(jobs, n_processes, n_threads, desc):
     """read_job_outliers of each job, in job order, over n_processes processes of n_threads threads each."""
     if n_processes == 1:
         with ThreadPoolExecutor(max_workers=n_threads) as executor:
-            return list(tqdm(executor.map(read_job_outliers, jobs), total=len(jobs), desc=desc))
-    chunk_size = max(1, -(-len(jobs) // (4 * n_processes)))  # ~4 chunks per process, for the progress bar
-    chunks = [jobs[start:start + chunk_size] for start in range(0, len(jobs), chunk_size)]
+            return list(
+                tqdm(executor.map(read_job_outliers, jobs), total=len(jobs), desc=desc)
+            )
+    # ~4 chunks per process, for the progress bar
+    chunk_size = max(1, -(-len(jobs) // (4 * n_processes)))
+    chunks = [
+        jobs[start : start + chunk_size] for start in range(0, len(jobs), chunk_size)
+    ]
     with ProcessPoolExecutor(max_workers=n_processes) as executor:
-        chunk_results = executor.map(read_jobs_with_threads, chunks, [n_threads] * len(chunks))
-        return [result for results in tqdm(chunk_results, total=len(chunks), desc=desc) for result in results]
+        chunk_results = executor.map(
+            read_jobs_with_threads, chunks, [n_threads] * len(chunks)
+        )
+        return [
+            result
+            for results in tqdm(chunk_results, total=len(chunks), desc=desc)
+            for result in results
+        ]
 
 
 class ResultAnalysisManager:
@@ -146,7 +159,9 @@ class ResultAnalysisManager:
             file_path = self.paths.weave_output_file(freq, taskname, job_idx, stage)
             if work_in_local_dir:
                 file_path = Path(file_path).name
-            jobs.append((i, job_idx, file_path, th, num_toplist, freq_deriv_order, read_inj))
+            jobs.append(
+                (i, job_idx, file_path, th, num_toplist, freq_deriv_order, read_inj)
+            )
         results = read_jobs(jobs, n_processes, max_workers, f"{desc} {freq}Hz")
 
         # 4. Safe Sequential Unpacking
@@ -294,7 +309,9 @@ class ResultAnalysisManager:
         cluster_hdul.append(info_clustered_hdu)
 
         # 5. File Path Logic
-        outlier_file_path = self.paths.outlier_file(freq, taskname, stage, cluster=True, location="home")
+        outlier_file_path = self.paths.outlier_file(
+            freq, taskname, stage, cluster=True, location="home"
+        )
 
         if work_in_local_dir:
             outlier_file_path = Path(outlier_file_path).name
@@ -455,7 +472,9 @@ class ResultAnalysisManager:
 
         # 9. Handle Clustering
         if cluster and hdus[1].data is not None:
-            primary_hdu.header["HIERARCH cluster_n_spacing"] = self.config.cluster_n_spacing
+            primary_hdu.header["HIERARCH cluster_n_spacing"] = (
+                self.config.cluster_n_spacing
+            )
 
             inj_hdu_to_pass = next((h for h in hdus if h.name == "INJECTION"), None)
             non_sat_hdu_to_pass = next(
@@ -477,8 +496,18 @@ class ResultAnalysisManager:
         print(f"Finished writing {stage} result for {freq} Hz")
         return outlier_file_path
 
-    def write_loudest_outliers(self, taskname, freq, stage, freq_deriv_order, n_seeds, loudest_per_seed, passed,
-                               mean2f_threshold, spacing_files):
+    def write_loudest_outliers(
+        self,
+        taskname,
+        freq,
+        stage,
+        freq_deriv_order,
+        n_seeds,
+        loudest_per_seed,
+        passed,
+        mean2f_threshold,
+        spacing_files,
+    ):
         """
         Unclustered and clustered outlier files of a stage collected as the loudest candidate per seed
         (see loudest_rows); INFO has one row per seed.
@@ -503,11 +532,24 @@ class ResultAnalysisManager:
             outlier_hdu = fits.BinTableHDU(name=hdu_name)
 
         info_columns = ("freq", "jobIndex", "outliers", "isSaturated")
-        info = np.recarray((n_seeds,), dtype=[(column, ">f8") for column in info_columns])
-        info["freq"], info["jobIndex"], info["outliers"], info["isSaturated"] = freq, np.arange(n_seeds), passed, 0
+        info = np.recarray(
+            (n_seeds,), dtype=[(column, ">f8") for column in info_columns]
+        )
+        info["freq"], info["jobIndex"], info["outliers"], info["isSaturated"] = (
+            freq,
+            np.arange(n_seeds),
+            passed,
+            0,
+        )
 
-        path = self.paths.outlier_file(freq, taskname, stage, cluster=False, location="home")
+        path = self.paths.outlier_file(
+            freq, taskname, stage, cluster=False, location="home"
+        )
         make_dir([path])
-        fits.HDUList([primary_hdu, outlier_hdu, fits.BinTableHDU(data=info, name="info")]).writeto(path, overwrite=True)
+        fits.HDUList(
+            [primary_hdu, outlier_hdu, fits.BinTableHDU(data=info, name="info")]
+        ).writeto(path, overwrite=True)
         primary_hdu.header["HIERARCH cluster_n_spacing"] = self.config.cluster_n_spacing
-        return self._write_clustered_results(freq, taskname, stage, outlier_hdu.data, freq_deriv_order, primary_hdu)
+        return self._write_clustered_results(
+            freq, taskname, stage, outlier_hdu.data, freq_deriv_order, primary_hdu
+        )

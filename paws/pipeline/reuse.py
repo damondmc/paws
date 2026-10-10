@@ -24,7 +24,10 @@ def own_run_seeds(settings, paths, stage, freq):
             return {}
         plan = default_seed_plan(stage, seed_rows)
     own = plan.own_runs(stage.name)
-    return {tuple(key): int(first_job) for key, first_job in zip(plan.keys[own], plan.first_job[own])}
+    return {
+        tuple(key): int(first_job)
+        for key, first_job in zip(plan.keys[own], plan.first_job[own])
+    }
 
 
 def build_seed_plan(settings, paths, stage, freq, seed_rows):
@@ -34,10 +37,16 @@ def build_seed_plan(settings, paths, stage, freq, seed_rows):
     first_job = np.zeros(len(keys), int)
     reused = np.zeros(len(keys), bool)
     for earlier_name in stage.reuse:
-        earlier_runs = own_run_seeds(settings, paths, settings.stage(earlier_name), freq)
+        earlier_runs = own_run_seeds(
+            settings, paths, settings.stage(earlier_name), freq
+        )
         for seed, key in enumerate(map(tuple, keys)):
             if not reused[seed] and key in earlier_runs:
-                source_stage[seed], first_job[seed], reused[seed] = earlier_name, earlier_runs[key], True
+                source_stage[seed], first_job[seed], reused[seed] = (
+                    earlier_name,
+                    earlier_runs[key],
+                    True,
+                )
     new_runs = np.flatnonzero(~reused)
     first_job[new_runs] = np.arange(new_runs.size) * stage.n_sky + 1
     return SeedPlan(keys, source_stage.astype(str), first_job)

@@ -476,7 +476,10 @@ class WorkflowManager:
     ):
         """Generates VARS for OSG file transfers for Upper Limits."""
 
-        input_files_list = ([str(exe)] if exe else []) + [str(config_file), str(target_file)]
+        input_files_list = ([str(exe)] if exe else []) + [
+            str(config_file),
+            str(target_file),
+        ]
         input_files_list.extend([str(s) for s in sft_files])
         input_files_list.append(str(metric_file))
 
@@ -671,11 +674,15 @@ class WorkflowManager:
             for job_index in range(1, n_jobs * n_sky + 1)
         ]
 
-        input_files_list = ([str(exe)] if exe else []) + [
-            str(config_file),
-            str(target_file),
-            str(prev_outlier_file),
-        ] + weave_files
+        input_files_list = (
+            ([str(exe)] if exe else [])
+            + [
+                str(config_file),
+                str(target_file),
+                str(prev_outlier_file),
+            ]
+            + weave_files
+        )
         input_files_str = ", ".join(input_files_list)
 
         # OSG execute nodes can't transfer output straight back to the access

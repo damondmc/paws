@@ -63,16 +63,22 @@ class Target(_Model):
         """Spin-down age (s) used for the power-law spin-down range at freq."""
         if freq < self.age_break_freq:
             return SECONDS_PER_YEAR * self.age
-        return SECONDS_PER_YEAR * (self.age + (freq - (self.age_break_freq - 1)) * self.age_slope)
+        return SECONDS_PER_YEAR * (
+            self.age + (freq - (self.age_break_freq - 1)) * self.age_slope
+        )
 
 
 class FollowupThresholds(_Model):
     """Thresholds a follow-up stage applies to the loudest candidate of each seed, computed from injections."""
 
-    injections: tuple[str, str]  # injection stages matching (previous stage, this stage)
-    excess_ratio_percentile: float  # % of injections the (2F-4) excess ratio threshold may lose
-    h1_l1_percentile: Optional[float]  # % of injections the H1/L1 excess-ratio window may lose; null: no H1/L1 excess-ratio window
-    bands: list[int]  # threshold band edges [Hz]: one excess ratio threshold / H1/L1 excess-ratio window per band
+    # injection stages matching (previous stage, this stage)
+    injections: tuple[str, str]
+    # % of injections the (2F-4) excess ratio threshold may lose
+    excess_ratio_percentile: float
+    # % of injections the H1/L1 excess-ratio window may lose; null: no H1/L1 excess-ratio window
+    h1_l1_percentile: Optional[float]
+    # threshold band edges [Hz]: one excess ratio threshold / H1/L1 excess-ratio window per band
+    bands: list[int]
 
 
 class Stage(_Model):
@@ -95,19 +101,23 @@ class Stage(_Model):
     request_memory: str
     request_disk: str
     request_cpu: int
-    image: Optional[str]  # file in <osdf_dir>/images; null: the image set in the sub-file writer
-    search_df1: Optional[float]  # search stage: f1dot / f2dot sub-band widths of one Weave job
+    # file in <osdf_dir>/images; null: the image set in the sub-file writer
+    image: Optional[str]
+    # search stage: f1dot / f2dot sub-band widths of one Weave job
+    search_df1: Optional[float]
     search_df2: Optional[float]
 
     # sky
-    sky_grid: Optional[str]  # file in the config dir: (d_alpha, d_delta) offsets around each seed
+    # file in the config dir: (d_alpha, d_delta) offsets around each seed
+    sky_grid: Optional[str]
     n_sky: int
     sky_radius: float
     spacing_alpha: Optional[float]
     spacing_delta: Optional[float]
 
     # injections
-    is_injection: bool  # carries injections (from the previous stage when kind=followup)
+    # carries injections (from the previous stage when kind=followup)
+    is_injection: bool
     inj_order: Optional[int]
     n_inj: Optional[int]  # injections per band (kind=injection / upperlimit)
     n_inj_max: Optional[int]  # keep only the first n_inj_max seeds per band; null: all
@@ -115,8 +125,10 @@ class Stage(_Model):
 
     # outliers
     keep: int  # candidates kept per seed
-    thresholds: Optional[FollowupThresholds]  # follow-up of real candidates; null: injection or record-only stage
-    reuse: list[str]  # earlier stages whose Weave results are taken for seeds equal to theirs
+    # follow-up of real candidates; null: injection or record-only stage
+    thresholds: Optional[FollowupThresholds]
+    # earlier stages whose Weave results are taken for seeds equal to theirs
+    reuse: list[str]
     cluster: bool
     separate_saturated: bool
 
@@ -124,10 +136,17 @@ class Stage(_Model):
     def _check(self):
         if self.kind != "search" and self.prev is None:
             raise ValueError(f"{self.name}: a {self.kind} stage needs prev")
-        if self.kind in ("injection", "upperlimit") and None in (self.n_inj, self.h0_file):
-            raise ValueError(f"{self.name}: a {self.kind} stage needs n_inj and h0_file")
+        if self.kind in ("injection", "upperlimit") and None in (
+            self.n_inj,
+            self.h0_file,
+        ):
+            raise ValueError(
+                f"{self.name}: a {self.kind} stage needs n_inj and h0_file"
+            )
         if self.kind == "search" and None in (self.search_df1, self.search_df2):
-            raise ValueError(f"{self.name}: a search stage needs search_df1 and search_df2")
+            raise ValueError(
+                f"{self.name}: a search stage needs search_df1 and search_df2"
+            )
         if self.kind in ("injection", "upperlimit") and not self.is_injection:
             raise ValueError(f"{self.name}: a {self.kind} stage has is_injection: true")
         if self.is_injection and self.inj_order is None:
@@ -135,9 +154,13 @@ class Stage(_Model):
         if self.sky_grid is None and self.n_sky != 1:
             raise ValueError(f"{self.name}: n_sky={self.n_sky} without a sky_grid")
         if self.is_injection and (self.thresholds is not None or self.reuse):
-            raise ValueError(f"{self.name}: an injection stage keeps every candidate and runs its own jobs")
+            raise ValueError(
+                f"{self.name}: an injection stage keeps every candidate and runs its own jobs"
+            )
         if self.thresholds is not None and self.keep != 1:
-            raise ValueError(f"{self.name}: a thresholded follow-up keeps the loudest candidate per seed (keep: 1)")
+            raise ValueError(
+                f"{self.name}: a thresholded follow-up keeps the loudest candidate per seed (keep: 1)"
+            )
         return self
 
     def taskname(self, target, freq):
@@ -156,25 +179,41 @@ class Stages(_Model):
     @model_validator(mode="before")
     @classmethod
     def _drop_anchors_and_name_stages(cls, data):
-        data = {key: value for key, value in data.items() if not key.startswith("x-")}  # YAML anchor blocks
-        data["stages"] = {name: {**fields, "name": name} for name, fields in data["stages"].items()}
+        data = {
+            key: value for key, value in data.items() if not key.startswith("x-")
+        }  # YAML anchor blocks
+        data["stages"] = {
+            name: {**fields, "name": name} for name, fields in data["stages"].items()
+        }
         return data
 
     @model_validator(mode="after")
     def _references_exist(self):
         for stage in self.stages.values():
             if stage.prev is not None and stage.prev not in self.stages:
-                raise ValueError(f"{stage.name}: prev stage {stage.prev!r} is not defined")
+                raise ValueError(
+                    f"{stage.name}: prev stage {stage.prev!r} is not defined"
+                )
             for reused in stage.reuse:
                 if reused not in self.stages:
-                    raise ValueError(f"{stage.name}: reused stage {reused!r} is not defined")
+                    raise ValueError(
+                        f"{stage.name}: reused stage {reused!r} is not defined"
+                    )
                 source = self.stages[reused]
-                if (source.tcoh, source.order, source.n_sky) != (stage.tcoh, stage.order, stage.n_sky):
-                    raise ValueError(f"{stage.name}: cannot reuse {reused} (different tcoh, order or sky grid)")
+                if (source.tcoh, source.order, source.n_sky) != (
+                    stage.tcoh,
+                    stage.order,
+                    stage.n_sky,
+                ):
+                    raise ValueError(
+                        f"{stage.name}: cannot reuse {reused} (different tcoh, order or sky grid)"
+                    )
             if stage.thresholds is not None:
                 for injection_stage in stage.thresholds.injections:
                     if injection_stage not in self.stages:
-                        raise ValueError(f"{stage.name}: injection stage {injection_stage!r} is not defined")
+                        raise ValueError(
+                            f"{stage.name}: injection stage {injection_stage!r} is not defined"
+                        )
         for chain, names in self.chains.items():
             for name in names:
                 if name not in self.stages:
@@ -187,7 +226,9 @@ class Settings:
 
     def __init__(self, config_dir):
         if not config_dir:
-            raise RuntimeError("no config directory: pass --config-dir or set PAWS_CONFIG_DIR")
+            raise RuntimeError(
+                "no config directory: pass --config-dir or set PAWS_CONFIG_DIR"
+            )
         self.config_dir = Path(config_dir)
         self.config = Config.from_yaml(self.config_dir / "config.yaml")
         self.stages_file = Stages.from_yaml(self.config_dir / "stages.yaml")
@@ -198,13 +239,17 @@ class Settings:
             if stage.sky_grid:
                 n_grid_points = len(self.sky_offsets(stage)[0])
                 if n_grid_points != stage.n_sky:
-                    raise ValueError(f"{stage.name}: n_sky={stage.n_sky} but {stage.sky_grid} has {n_grid_points} points")
+                    raise ValueError(
+                        f"{stage.name}: n_sky={stage.n_sky} but {stage.sky_grid} has {n_grid_points} points"
+                    )
 
     def stage(self, name):
         try:
             return self.stages_file.stages[name]
         except KeyError:
-            raise KeyError(f"stage {name!r} is not in {self.config_dir / 'stages.yaml'}") from None
+            raise KeyError(
+                f"stage {name!r} is not in {self.config_dir / 'stages.yaml'}"
+            ) from None
 
     def prev(self, stage):
         return self.stage(stage.prev)
@@ -215,7 +260,9 @@ class Settings:
             return None
         if stage.sky_grid not in self._sky_grids:
             grid_path = self.config_dir / stage.sky_grid
-            self._sky_grids[stage.sky_grid] = tuple(np.loadtxt(grid_path, unpack=True, ndmin=2))
+            self._sky_grids[stage.sky_grid] = tuple(
+                np.loadtxt(grid_path, unpack=True, ndmin=2)
+            )
         return self._sky_grids[stage.sky_grid]
 
     def config_path(self, name):
@@ -233,4 +280,6 @@ class Settings:
 
     def job_config_urls(self):
         """OSDF copies of config.yaml and the target yaml that outlier / upper-limit jobs read."""
-        return self.osdf_url("config", "config.yaml"), self.osdf_url("config", self.target_file.name)
+        return self.osdf_url("config", "config.yaml"), self.osdf_url(
+            "config", self.target_file.name
+        )

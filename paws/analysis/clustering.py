@@ -1,4 +1,5 @@
 import numpy as np
+
 from ..definitions import phase_param_name
 
 # =============================================================================

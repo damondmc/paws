@@ -21,10 +21,14 @@ def search_mean2f_threshold(n_templates, n_segments):
 # --------------------- follow-up, from injections ---------------------
 
 
-def injection_excess_ratios(prev_rows, prev_injected_freqs, now_rows, now_injected_freqs):
+def injection_excess_ratios(
+    prev_rows, prev_injected_freqs, now_rows, now_injected_freqs
+):
     """(2F_now - 4) / (2F_prev - 4) of every injection of one band, matched between the stages by injected Freq."""
     prev_row_of_freq = {round(f, 9): i for i, f in enumerate(prev_injected_freqs)}
-    prev_index = np.array([prev_row_of_freq[round(f, 9)] for f in now_injected_freqs], dtype=int)
+    prev_index = np.array(
+        [prev_row_of_freq[round(f, 9)] for f in now_injected_freqs], dtype=int
+    )
     return (now_rows["mean2F"] - 4) / (prev_rows["mean2F"][prev_index] - 4)
 
 
@@ -35,7 +39,9 @@ def log10_h1_l1_excess_ratio(mean2f_h1, mean2f_l1):
     with np.errstate(divide="ignore", invalid="ignore"):
         log_ratio = np.log10(excess_h1 / excess_l1)
     both_positive = (excess_h1 > 0) & (excess_l1 > 0)
-    return np.where(both_positive, log_ratio, np.where(excess_h1 > excess_l1, 5.0, -5.0))
+    return np.where(
+        both_positive, log_ratio, np.where(excess_h1 > excess_l1, 5.0, -5.0)
+    )
 
 
 def threshold_band_index(band_edges, freq):
@@ -46,20 +52,29 @@ def threshold_band_index(band_edges, freq):
 def excess_ratio_thresholds(band_of_injection, ratios, band_edges, percentile):
     """(percentile, lowest) of the injection ratios in each threshold band, shape (n_bands, 2)."""
     band_index = threshold_band_index(band_edges, band_of_injection)
-    return np.array([
-        (np.percentile(ratios[band_index == i], percentile), ratios[band_index == i].min())
-        for i in range(len(band_edges) - 1)
-    ])
+    return np.array(
+        [
+            (
+                np.percentile(ratios[band_index == i], percentile),
+                ratios[band_index == i].min(),
+            )
+            for i in range(len(band_edges) - 1)
+        ]
+    )
 
 
 def h1_l1_windows(band_of_injection, log_ratio, band_edges, percentile):
     """(low, high) log10 r_HL holding the central (100 - percentile)% of the injections in each threshold band,
     shape (n_bands, 2)."""
     band_index = threshold_band_index(band_edges, band_of_injection)
-    return np.array([
-        np.percentile(log_ratio[band_index == i], [percentile / 2, 100 - percentile / 2])
-        for i in range(len(band_edges) - 1)
-    ])
+    return np.array(
+        [
+            np.percentile(
+                log_ratio[band_index == i], [percentile / 2, 100 - percentile / 2]
+            )
+            for i in range(len(band_edges) - 1)
+        ]
+    )
 
 
 # ---------------------- follow-up, applying -----------------------

@@ -1,9 +1,11 @@
-from paws.definitions import phase_param_name
-from .models import PowerLawModel
-from tqdm import tqdm
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
+from tqdm import tqdm
+
+from paws.definitions import phase_param_name
+
+from .models import PowerLawModel
 
 
 class SearchParamGenerator:

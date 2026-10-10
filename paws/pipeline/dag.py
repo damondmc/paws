@@ -43,17 +43,31 @@ def dag_injection(context, freq):
     if search_file is None:
         return None
     generator = InjectionParamGenerator(
-        model=context.spindown_model(freq), ref_time=context.config.ref_time, f0_band=context.config.f0_band
+        model=context.spindown_model(freq),
+        ref_time=context.config.ref_time,
+        f0_band=context.config.f0_band,
     )
     search_params, injection_params = generator.generate_parameters(
-        alpha=target.alpha, dalpha=target.dalpha, delta=target.delta, ddelta=target.ddelta,
-        non_sat_bands=non_saturated_bands, spacing=outlier_file_spacing(search_file, stage.order),
-        h0=context.h0_by_freq()[freq], freq=freq, n_inj=stage.n_inj, n_spacing=context.config.followup_n_spacing,
-        inj_freq_deriv_order=stage.inj_order, freq_deriv_order=stage.order, sky_radius=stage.sky_radius,
-        spacing_alpha=stage.spacing_alpha, spacing_delta=stage.spacing_delta,
+        alpha=target.alpha,
+        dalpha=target.dalpha,
+        delta=target.delta,
+        ddelta=target.ddelta,
+        non_sat_bands=non_saturated_bands,
+        spacing=outlier_file_spacing(search_file, stage.order),
+        h0=context.h0_by_freq()[freq],
+        freq=freq,
+        n_inj=stage.n_inj,
+        n_spacing=context.config.followup_n_spacing,
+        inj_freq_deriv_order=stage.inj_order,
+        freq_deriv_order=stage.order,
+        sky_radius=stage.sky_radius,
+        spacing_alpha=stage.spacing_alpha,
+        spacing_delta=stage.spacing_delta,
     )
     return context.make_weave_dag(
-        freq, search_params[str(freq)].data, inj_params=injection_params[str(freq)].data,
+        freq,
+        search_params[str(freq)].data,
+        inj_params=injection_params[str(freq)].data,
         inj_freq_deriv_order=stage.inj_order,
     )
 
@@ -62,10 +76,18 @@ def followup_params(context, freq, seed_rows):
     stage, target, prev_stage = context.stage, context.target, context.prev_stage
     seed_file = seed_outlier_file(context.settings, context.paths, stage, freq)
     return FollowUpParamGenerator(context.spindown_model(freq)).generate_parameter(
-        alpha=target.alpha, dalpha=target.dalpha, delta=target.delta, ddelta=target.ddelta, data=seed_rows,
-        old_freq_deriv_order=prev_stage.order, new_freq_deriv_order=stage.order,
-        spacing=outlier_file_spacing(seed_file, prev_stage.order), n_spacing=context.config.followup_n_spacing,
-        sky_radius=stage.sky_radius, spacing_alpha=stage.spacing_alpha, spacing_delta=stage.spacing_delta,
+        alpha=target.alpha,
+        dalpha=target.dalpha,
+        delta=target.delta,
+        ddelta=target.ddelta,
+        data=seed_rows,
+        old_freq_deriv_order=prev_stage.order,
+        new_freq_deriv_order=stage.order,
+        spacing=outlier_file_spacing(seed_file, prev_stage.order),
+        n_spacing=context.config.followup_n_spacing,
+        sky_radius=stage.sky_radius,
+        spacing_alpha=stage.spacing_alpha,
+        spacing_delta=stage.spacing_delta,
     )
 
 
@@ -78,7 +100,9 @@ def dag_followup(context, freq):
     if seed_rows is None:
         return None
     if stage.reuse:
-        plan = reuse.build_seed_plan(context.settings, context.paths, stage, freq, seed_rows)
+        plan = reuse.build_seed_plan(
+            context.settings, context.paths, stage, freq, seed_rows
+        )
     else:
         plan = default_seed_plan(stage, seed_rows)
     context.seed_plans[freq] = plan
@@ -88,25 +112,43 @@ def dag_followup(context, freq):
     if new_seeds.size == 0:
         return None
     params = followup_params(context, freq, seed_rows[new_seeds])
-    return context.make_weave_dag(freq, params.data, sky_offsets=context.settings.sky_offsets(stage))
+    return context.make_weave_dag(
+        freq, params.data, sky_offsets=context.settings.sky_offsets(stage)
+    )
 
 
 def dag_injection_followup(context, freq):
     stage, target, prev_stage = context.stage, context.target, context.prev_stage
-    seed_rows, injection_rows = read_seed_rows(context.settings, context.paths, stage, freq)
+    seed_rows, injection_rows = read_seed_rows(
+        context.settings, context.paths, stage, freq
+    )
     if seed_rows is None or len(seed_rows) == 0:
         return None
     seed_file = seed_outlier_file(context.settings, context.paths, stage, freq)
-    followup_params = FollowUpParamGenerator(context.spindown_model(freq)).generate_parameter(
-        alpha=target.alpha, dalpha=target.dalpha, delta=target.delta, ddelta=target.ddelta, data=seed_rows,
-        old_freq_deriv_order=prev_stage.order, new_freq_deriv_order=stage.order,
-        spacing=outlier_file_spacing(seed_file, prev_stage.order), n_spacing=context.config.followup_n_spacing,
-        sky_radius=stage.sky_radius, spacing_alpha=stage.spacing_alpha, spacing_delta=stage.spacing_delta,
+    followup_params = FollowUpParamGenerator(
+        context.spindown_model(freq)
+    ).generate_parameter(
+        alpha=target.alpha,
+        dalpha=target.dalpha,
+        delta=target.delta,
+        ddelta=target.ddelta,
+        data=seed_rows,
+        old_freq_deriv_order=prev_stage.order,
+        new_freq_deriv_order=stage.order,
+        spacing=outlier_file_spacing(seed_file, prev_stage.order),
+        n_spacing=context.config.followup_n_spacing,
+        sky_radius=stage.sky_radius,
+        spacing_alpha=stage.spacing_alpha,
+        spacing_delta=stage.spacing_delta,
     )
     return context.make_weave_dag(
-        freq, followup_params.data, inj_params=injection_rows,
+        freq,
+        followup_params.data,
+        inj_params=injection_rows,
         inj_freq_deriv_order=stage.inj_order if stage.is_injection else None,
-        sky_offsets=context.settings.sky_offsets(stage) if len(followup_params.data) else None,
+        sky_offsets=context.settings.sky_offsets(stage)
+        if len(followup_params.data)
+        else None,
     )
 
 
@@ -117,14 +159,31 @@ def dag_upperlimit(context, freq):
         return None
     config_url, target_url = context.settings.job_config_urls()
     return context.workflow_manager.make_upperlimit_dag(
-        config_url, target_url, context.taskname(freq), freq, stage.name, stage.order,
-        context.paths.sft_ensemble(freq), context.settings.metric_url(stage),
-        fits.getval(search_file, "mean2F_th", 0), non_saturated_bands, None,
-        df_grid=list(outlier_file_spacing(search_file, stage.order).values()), inj_freq_deriv_order=stage.inj_order,
-        num_toplist=stage.keep, sky_radius=stage.sky_radius, spacing_alpha=stage.spacing_alpha,
-        spacing_delta=stage.spacing_delta, h0_est=context.h0_by_freq()[freq], n_inj=stage.n_inj,
-        request_memory=stage.request_memory, request_disk=stage.request_disk, request_cpu=stage.request_cpu,
-        cluster=stage.cluster, work_in_local_dir=True, save_intermediate=False,
+        config_url,
+        target_url,
+        context.taskname(freq),
+        freq,
+        stage.name,
+        stage.order,
+        context.paths.sft_ensemble(freq),
+        context.settings.metric_url(stage),
+        fits.getval(search_file, "mean2F_th", 0),
+        non_saturated_bands,
+        None,
+        df_grid=list(outlier_file_spacing(search_file, stage.order).values()),
+        inj_freq_deriv_order=stage.inj_order,
+        num_toplist=stage.keep,
+        sky_radius=stage.sky_radius,
+        spacing_alpha=stage.spacing_alpha,
+        spacing_delta=stage.spacing_delta,
+        h0_est=context.h0_by_freq()[freq],
+        n_inj=stage.n_inj,
+        request_memory=stage.request_memory,
+        request_disk=stage.request_disk,
+        request_cpu=stage.request_cpu,
+        cluster=stage.cluster,
+        work_in_local_dir=True,
+        save_intermediate=False,
         image=context.settings.image_url(stage),
     )
 
@@ -139,8 +198,14 @@ DAG_MAKER_BY_KIND = {
 
 def dag_list_path(context, bands):
     stage = context.stage
-    band_tag = "_".join(map(str, bands)) if bands else f"{stage.bands[0]}-{stage.bands[1]}"
-    return context.config.home_dir / "dagFiles" / f"{stage.name}_{context.target.name}_dag{band_tag}Hz.txt"
+    band_tag = (
+        "_".join(map(str, bands)) if bands else f"{stage.bands[0]}-{stage.bands[1]}"
+    )
+    return (
+        context.config.home_dir
+        / "dagFiles"
+        / f"{stage.name}_{context.target.name}_dag{band_tag}Hz.txt"
+    )
 
 
 def make_stage_dags(settings, stage_name, bands):
@@ -158,12 +223,16 @@ def make_stage_dags(settings, stage_name, bands):
                 dag_list.write(f"{dag_file}\n")
         if stage.kind != "upperlimit":
             # must be the LAST entry: its ALL_NODES lines apply to every DAG in the list
-            dag_list.write(f"{context.workflow_manager.make_osdf_cleanup_dag(stage.name)}\n")
+            dag_list.write(
+                f"{context.workflow_manager.make_osdf_cleanup_dag(stage.name)}\n"
+            )
     if context.seed_plans:
         save_seed_plans(settings, stage, context.seed_plans)
         n_seeds, n_new = context.seed_counts["seeds"], context.seed_counts["new"]
-        print(f"{stage.name}: {n_seeds:,d} seeds, {n_seeds - n_new:,d} reuse earlier results, {n_new:,d} new "
-              f"({n_new * stage.n_sky:,d} Weave runs)")
+        print(
+            f"{stage.name}: {n_seeds:,d} seeds, {n_seeds - n_new:,d} reuse earlier results, {n_new:,d} new "
+            f"({n_new * stage.n_sky:,d} Weave runs)"
+        )
     elif skipped_bands:
         print(f"skipped bands: {skipped_bands}")
     print(f"DAG list: {list_path}")

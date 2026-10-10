@@ -8,7 +8,9 @@ from pydantic import ValidationError
 
 from paws.settings import Config, Settings, Stage, Stages, Target
 
-REAL_CONFIG_DIR = Path(os.environ.get("PAWS_CONFIG_DIR", Path(__file__).parents[2] / "config"))
+REAL_CONFIG_DIR = Path(
+    os.environ.get("PAWS_CONFIG_DIR", Path(__file__).parents[2] / "config")
+)
 
 
 def load(config_dir, name):
@@ -17,15 +19,21 @@ def load(config_dir, name):
 
 
 def stage_fields(config_dir, name):
-    return copy.deepcopy(Stages.model_validate(load(config_dir, "stages.yaml")).stages[name].model_dump())
+    return copy.deepcopy(
+        Stages.model_validate(load(config_dir, "stages.yaml")).stages[name].model_dump()
+    )
 
 
 def test_fixture_config_validates(settings):
-    assert settings.stage("followup-2").n_sky == len(settings.sky_offsets(settings.stage("followup-2"))[0])
+    assert settings.stage("followup-2").n_sky == len(
+        settings.sky_offsets(settings.stage("followup-2"))[0]
+    )
     assert settings.stages_file.chains["test"] == ["followup-1", "followup-2"]
 
 
-@pytest.mark.skipif(not (REAL_CONFIG_DIR / "stages.yaml").exists(), reason="no analysis config dir")
+@pytest.mark.skipif(
+    not (REAL_CONFIG_DIR / "stages.yaml").exists(), reason="no analysis config dir"
+)
 def test_real_config_validates():
     Settings(REAL_CONFIG_DIR)
 
@@ -68,7 +76,8 @@ def test_injection_stage_cannot_reuse(config_dir):
 
 def test_reuse_needs_same_grid(config_dir):
     raw = load(config_dir, "stages.yaml")
-    raw["stages"]["followup-2"]["reuse"] = ["followup-old-1"]  # t10, 1 sky point for a t20, 3-point stage
+    # t10, 1 sky point for a t20, 3-point stage
+    raw["stages"]["followup-2"]["reuse"] = ["followup-old-1"]
     with pytest.raises(ValidationError):
         Stages.model_validate(raw)
 
@@ -100,10 +109,16 @@ def test_tau_matches_formula(config_dir, freq):
 
 
 def test_taskname(settings):
-    assert settings.stage("injections-2").taskname(settings.target, 100) == "TestTarget_injections-2_TCoh20_O2_100Hz"
+    assert (
+        settings.stage("injections-2").taskname(settings.target, 100)
+        == "TestTarget_injections-2_TCoh20_O2_100Hz"
+    )
 
 
 def test_osdf_urls(settings):
-    osdf = str(settings.config.osdf_dir)[len("/osdf"):]
-    assert settings.metric_url(settings.stage("search-0")) == f"osdf://{osdf}/metricSetup/test_t5.fts"
+    osdf = str(settings.config.osdf_dir)[len("/osdf") :]
+    assert (
+        settings.metric_url(settings.stage("search-0"))
+        == f"osdf://{osdf}/metricSetup/test_t5.fts"
+    )
     assert settings.job_config_urls()[1] == f"osdf://{osdf}/config/target.yaml"
