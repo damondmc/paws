@@ -6,7 +6,7 @@ from pathlib import Path
 
 from paws.pipeline.dag import make_stage_dags
 from paws.pipeline.metric import make_segments_and_metric
-from paws.pipeline.outliers import collect_stage_outliers, make_stage_outlier_dags
+from paws.pipeline.stage_outliers import collect_stage_outliers, make_stage_outlier_dags
 from paws.pipeline.stage_thresholds import write_threshold_records
 from paws.settings import Settings
 
