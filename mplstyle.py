@@ -37,7 +37,7 @@ def install_style():
     with open(target_path, "w") as f:
         f.write(style_content)
 
-    print("✅ Success!")
+    print("Success!")
     print(f"Style file installed at: {target_path}")
     print("You can now use: plt.style.use('paws')")
 

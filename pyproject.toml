@@ -1,7 +1,7 @@
 [project]
 name = "paws"
 version = "1.0.0"
-description = "Python Automation for Weave Searches — manages Condor jobs and analysis for directed CW searches using WEAVE"
+description = "Python Automation for Weave Searches - manages Condor jobs and analysis for directed CW searches using WEAVE"
 authors = [{ name = "Damon Cheung", email = "damoncht@umich.edu" }]
 requires-python = ">=3.10"
 dependencies = [

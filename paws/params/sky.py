@@ -43,13 +43,13 @@ def hexagonal_grid(num_layers):
     """
     Generates a hexagonal grid up to num_layers rings around the origin.
 
-    Returns a dict mapping layer index → list of (q, r, i, j) tuples where
+    Returns a dict mapping layer index -> list of (q, r, i, j) tuples where
     (q, r) are axial hex coordinates and (i, j) are 2D offsets in hex units:
         i = q + r/2
         j = r * sqrt(3)/2
 
     Layer 0 always contains exactly one point: the origin (0, 0, 0, 0).
-    Multiply (i, j) by (spacing_alpha, spacing_delta) to get sky offsets (Δα, Δδ).
+    Multiply (i, j) by (spacing_alpha, spacing_delta) to get sky offsets (d_alpha, d_delta).
     """
     sqrt3_2 = np.sqrt(3) / 2.0
     layer_points = {layer: [] for layer in range(num_layers + 1)}

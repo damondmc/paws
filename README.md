@@ -3,7 +3,7 @@
 
 PAWS is a comprehensive Python wrapper designed to automate and manage directed continuous gravitational wave searches. It serves as an orchestration layer for the **Weave** search pipeline, handling the generation of HTCondor workflows (DAGs), parameter space partitioning, post-search data analysis, follow-up analysis and upper-limits determinations.
 
-## 📦 Installation
+## Installation
 
 Using [uv](https://docs.astral.sh/uv/) (recommended):
 
@@ -17,7 +17,7 @@ Or with pip:
 pip install .
 ```
 
-## 🛠️ Container Build
+## Container Build
 
 To build the Apptainer image for OSG deployment:
 
