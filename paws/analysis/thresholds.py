@@ -90,15 +90,3 @@ def inside_h1_l1_window(window, mean2f_h1, mean2f_l1):
     window = np.asarray(window, float)
     log_ratio = log10_h1_l1_excess_ratio(mean2f_h1, mean2f_l1)
     return (log_ratio >= window[..., 0]) & (log_ratio <= window[..., 1])
-
-
-# ----------------------- old threshold files ------------------------
-
-
-def read_threshold_row(path, freq):
-    """Values (columns 2..) of the row of each frequency in an old threshold text file (f_start f_end values,
-    equal-width rows), such as config/*_v3.txt."""
-    table = np.loadtxt(path, ndmin=2)
-    first_row_start, row_width = table[0, 0], table[0, 1] - table[0, 0]
-    row_index = ((np.asarray(freq) - first_row_start) // row_width).astype(int)
-    return table[row_index, 2:]

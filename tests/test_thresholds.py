@@ -82,14 +82,3 @@ def test_threshold_band_index():
     assert list(
         thresholds.threshold_band_index(np.array([20, 100, 200]), [20, 99, 100, 199])
     ) == [0, 0, 1, 1]
-
-
-def test_read_old_threshold_file(tmp_path):
-    path = tmp_path / "ratio_v3.txt"
-    path.write_text(
-        "#f_start\tf_end\t0.1 percentile\tlowest\n"
-        "20\t30\t1.2346\t1.1000\n30\t40\t1.2346\t1.1000\n40\t50\t1.5000\t1.4000\n"
-    )
-    np.testing.assert_allclose(
-        thresholds.read_threshold_row(path, [25, 45]), [[1.2346, 1.1], [1.5, 1.4]]
-    )

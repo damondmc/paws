@@ -173,10 +173,14 @@ def threshold_record(stage, stage_threshold):
     }
 
 
+def threshold_record_path(settings, stage_name):
+    return settings.config.home_dir / "results" / stage_name / "thresholds.yaml"
+
+
 def write_threshold_records(settings, stage):
     """The stage's thresholds, as applied (rounded to 4 decimals), in results/<stage>/thresholds.yaml."""
     record = threshold_record(stage, stage_thresholds(settings, stage))
-    path = settings.config.home_dir / "results" / stage.name / "thresholds.yaml"
+    path = threshold_record_path(settings, stage.name)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as record_file:
         record_file.write(
@@ -184,3 +188,20 @@ def write_threshold_records(settings, stage):
         )
         yaml.safe_dump(record, record_file, sort_keys=False, default_flow_style=None)
     print("wrote", path)
+
+
+def read_threshold_record(settings, stage_name):
+    """StageThresholds of a follow-up stage as recorded in results/<stage>/thresholds.yaml (by `paws thresholds`)."""
+    with open(threshold_record_path(settings, stage_name)) as record_file:
+        bands = yaml.safe_load(record_file)["bands"]
+
+    def windows(key):
+        return np.array([band[key] for band in bands]) if key in bands[0] else None
+
+    return StageThresholds(
+        band_edges=np.array([band["f_min"] for band in bands] + [bands[-1]["f_max"]]),
+        excess_ratio=np.array([band["excess_ratio_threshold"] for band in bands]),
+        excess_ratio_lowest=np.array([band["lowest_excess_ratio"] for band in bands]),
+        h1_l1_window=windows("h1_l1_window"),
+        seed_h1_l1_window=windows("seed_h1_l1_window"),
+    )

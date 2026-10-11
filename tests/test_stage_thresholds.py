@@ -1,7 +1,12 @@
 import numpy as np
 import yaml
 
-from paws.pipeline.stage_thresholds import StageThresholds, threshold_record
+from paws.pipeline.stage_thresholds import (
+    StageThresholds,
+    read_threshold_record,
+    threshold_record,
+    threshold_record_path,
+)
 
 
 def test_threshold_record(settings, tmp_path):
@@ -38,3 +43,22 @@ def test_threshold_record_without_h1_l1_window(settings):
     )
     band = threshold_record(stage, stage_threshold)["bands"][0]
     assert "h1_l1_window" not in band and "seed_h1_l1_window" not in band
+
+
+def test_read_threshold_record_round_trip(settings):
+    stage = settings.stage("followup-1")
+    stage_threshold = StageThresholds(
+        band_edges=np.array([20, 100, 200]),
+        excess_ratio=np.array([1.2345, 1.5]),
+        excess_ratio_lowest=np.array([1.1, 1.4]),
+        h1_l1_window=np.array([[-1.0, 1.0], [-2.0, 2.0]]),
+        seed_h1_l1_window=None,
+    )
+    path = threshold_record_path(settings, stage.name)
+    path.parent.mkdir(parents=True)
+    path.write_text(yaml.safe_dump(threshold_record(stage, stage_threshold)))
+    read_back = read_threshold_record(settings, stage.name)
+    np.testing.assert_array_equal(read_back.band_edges, [20, 100, 200])
+    np.testing.assert_allclose(read_back.excess_ratio_at([25, 150]), [1.2345, 1.5])
+    np.testing.assert_allclose(read_back.h1_l1_window_at(150), [-2.0, 2.0])
+    assert read_back.seed_h1_l1_window is None
