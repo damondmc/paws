@@ -85,22 +85,30 @@ def read_jobs(jobs, n_processes, n_threads, desc):
     if n_processes == 1:
         with ThreadPoolExecutor(max_workers=n_threads) as executor:
             return list(
-                tqdm(executor.map(read_job_outliers, jobs), total=len(jobs), desc=desc)
+                tqdm(
+                    executor.map(read_job_outliers, jobs),
+                    total=len(jobs),
+                    desc=desc,
+                    unit="file",
+                )
             )
-    # ~4 chunks per process, for the progress bar
+    # ~4 chunks per process; the progress bar counts Weave result files
     chunk_size = max(1, -(-len(jobs) // (4 * n_processes)))
     chunks = [
         jobs[start : start + chunk_size] for start in range(0, len(jobs), chunk_size)
     ]
-    with ProcessPoolExecutor(max_workers=n_processes) as executor:
+    outliers = []
+    with (
+        ProcessPoolExecutor(max_workers=n_processes) as executor,
+        tqdm(total=len(jobs), desc=desc, unit="file") as progress,
+    ):
         chunk_results = executor.map(
             read_jobs_with_threads, chunks, [n_threads] * len(chunks)
         )
-        return [
-            result
-            for results in tqdm(chunk_results, total=len(chunks), desc=desc)
-            for result in results
-        ]
+        for results in chunk_results:
+            outliers.extend(results)
+            progress.update(len(results))
+    return outliers
 
 
 class ResultAnalysisManager:
