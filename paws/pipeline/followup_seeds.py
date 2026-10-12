@@ -93,15 +93,15 @@ def selected_seed_rows(settings, paths, stage, freq):
     seed_rows, _ = read_seed_rows(settings, paths, stage, freq)
     if seed_rows is None or len(seed_rows) == 0:
         return None
-    if stage.thresholds is not None and stage.thresholds.h1_l1_percentile is not None:
-        thresholds = stage_thresholds(settings, stage)
-        if thresholds.seed_h1_l1_window is not None:
-            window = thresholds.seed_h1_l1_window_at(freq)
-            seed_rows = seed_rows[
-                inside_h1_l1_window(
-                    window, seed_rows["mean2F_H1"], seed_rows["mean2F_L1"]
-                )
-            ]
+    if (
+        settings.prev(stage).kind == "search"
+        and stage.thresholds is not None
+        and stage.thresholds.h1_l1_percentile is not None
+    ):
+        window = stage_thresholds(settings, stage).seed_h1_l1_window_at(freq)
+        seed_rows = seed_rows[
+            inside_h1_l1_window(window, seed_rows["mean2F_H1"], seed_rows["mean2F_L1"])
+        ]
     return seed_rows if len(seed_rows) else None
 
 
