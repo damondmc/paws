@@ -111,7 +111,7 @@ def test_write_loudest_outliers(tmp_path, settings, paths):
         ) == [25.0]
         assert list(outliers["mean2F_TCoh5"]) == [6.5]
         assert outliers["coh2F_H1_TCoh5"].tolist() == [[1.0, 2.0]]
-        assert hdul[0].header["HIERARCH carried TCoh5"] == "search-0"
+        assert hdul[0].header["HIERARCH history TCoh5"] == "search-0"
         info = hdul["info"].data
         assert list(info["jobIndex"]) == [0, 1] and list(info["outliers"]) == [1, 0]
     clustered = paths.outlier_file(

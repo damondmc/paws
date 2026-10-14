@@ -6,13 +6,13 @@ Only used to build a stage's seed plan; everything downstream reads the plan and
 
 import numpy as np
 
-from paws.pipeline.followup_seeds import (
+from paws.pipeline.seed_plan import (
     SeedPlan,
     default_seed_plan,
     load_seed_plan,
     seed_keys,
-    selected_seed_rows,
 )
+from paws.pipeline.seeds import selected_seed_rows
 
 
 def own_run_seeds(settings, paths, stage, freq):

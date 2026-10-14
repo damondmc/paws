@@ -1,7 +1,7 @@
 import numpy as np
 
 from paws.pipeline import reuse
-from paws.pipeline.followup_seeds import default_seed_plan
+from paws.pipeline.seed_plan import default_seed_plan
 
 
 class FakeStage:

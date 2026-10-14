@@ -514,16 +514,16 @@ class ResultAnalysisManager:
         loudest_per_seed,
         passed,
         mean2f_threshold,
-        carried,
-        carried_stages,
+        history,
+        history_stages,
         spacing_files,
     ):
         """
         Unclustered and clustered outlier files of a stage collected as the loudest candidate per seed
         (see loudest_rows); INFO has one row per seed.
 
-        carried: {column name: per-seed values} of the earlier stages of the chain, added as columns
-        (<statistic>_TCoh<days>); carried_stages: {"TCoh<days>": stage name}, written to the primary header.
+        history: {column name: per-seed values} of the earlier stages of the chain, added as columns
+        (<statistic>_TCoh<days>); history_stages: {"TCoh<days>": stage name}, written to the primary header.
 
         passed: seeds kept as outliers. spacing_files: Weave result files whose template spacings are
         combined (maximum) into the primary header.
@@ -535,15 +535,15 @@ class ResultAnalysisManager:
         primary_hdu = fits.PrimaryHDU()
         for key, value in spacing.items():
             primary_hdu.header[f"HIERARCH {key}"] = value
-        for suffix, stage_name in carried_stages.items():
-            primary_hdu.header[f"HIERARCH carried {suffix}"] = (
+        for suffix, stage_name in history_stages.items():
+            primary_hdu.header[f"HIERARCH history {suffix}"] = (
                 stage_name,
                 "stage of the _" + suffix + " columns",
             )
 
         outlier_table = Table(loudest_per_seed[passed])
         outlier_table.add_column(mean2f_threshold[passed], name="mean2F threshold")
-        for name, values in carried.items():
+        for name, values in history.items():
             outlier_table.add_column(np.asarray(values)[passed], name=name)
         hdu_name = f"{stage}_outlier"
         if passed.any():

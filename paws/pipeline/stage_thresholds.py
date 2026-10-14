@@ -7,7 +7,7 @@ from typing import Optional
 import numpy as np
 import yaml
 
-from paws.analysis import thresholds
+from paws.analysis import calibration, statistics
 from paws.filepaths import PathManager
 from paws.fits_io import read_injection_outliers
 from paws.pipeline.noise_weights import log10_noise_ratio
@@ -32,7 +32,7 @@ class StageThresholds:
     def at(self, name, freq):
         """Threshold `name` (a field above) of the threshold band of each frequency."""
         return getattr(self, name)[
-            thresholds.threshold_band_index(self.band_edges, freq)
+            calibration.threshold_band_index(self.band_edges, freq)
         ]
 
 
@@ -67,12 +67,12 @@ def excess_ratio_thresholds_from_injections(
     band_of_injection, ratios = [], []
     for band, (now_rows, now_injected_freqs) in now_outliers.items():
         prev_rows, prev_injected_freqs = prev_outliers[band]
-        band_ratios = thresholds.injection_excess_ratios(
+        band_ratios = calibration.injection_excess_ratios(
             prev_rows, prev_injected_freqs, now_rows, now_injected_freqs
         )
         band_of_injection.append(np.full(len(band_ratios), band))
         ratios.append(band_ratios)
-    return thresholds.excess_ratio_thresholds(
+    return calibration.excess_ratio_thresholds(
         np.concatenate(band_of_injection),
         np.concatenate(ratios),
         band_edges,
@@ -94,10 +94,10 @@ def h1_l1_windows_from_injections(
     mean2f_l1 = np.concatenate(
         [rows["mean2F_L1"] for rows, _ in outliers_by_band.values()]
     )
-    log_ratio = thresholds.log10_h1_l1_excess_ratio(
+    log_ratio = statistics.log10_h1_l1_excess_ratio(
         mean2f_h1, mean2f_l1, log10_noise_ratio(settings, stage, band_of_injection)
     )
-    return thresholds.h1_l1_windows(
+    return calibration.h1_l1_windows(
         band_of_injection, log_ratio, band_edges, percentile
     )
 

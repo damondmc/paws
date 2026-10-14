@@ -8,13 +8,8 @@ from paws.params.followup import FollowUpParamGenerator
 from paws.params.injections import InjectionParamGenerator
 from paws.pipeline import reuse
 from paws.pipeline.context import StageContext
-from paws.pipeline.followup_seeds import (
-    default_seed_plan,
-    read_seed_rows,
-    save_seed_plans,
-    seed_outlier_file,
-    selected_seed_rows,
-)
+from paws.pipeline.seed_plan import default_seed_plan, save_seed_plans
+from paws.pipeline.seeds import read_seed_rows, seed_outlier_file, selected_seed_rows
 
 
 def dag_search(context, freq):
