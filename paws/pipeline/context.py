@@ -1,13 +1,18 @@
 """A stage's settings plus the managers the pipeline steps build from them."""
 
 from functools import cache
+from pathlib import Path
+from typing import Any, Optional
 
 import numpy as np
+from jaxtyping import Shaped
 
 from paws.analysis.outlier import ResultAnalysisManager
 from paws.filepaths import PathManager
 from paws.params.models import PowerLawModel
 from paws.params.search import SearchParamGenerator
+from paws.pipeline.seed_plan import SeedPlan
+from paws.settings import Settings, Stage
 from paws.workflow.manager import WorkflowManager
 
 N_THREADS = 32
@@ -16,21 +21,24 @@ N_THREADS = 32
 class StageContext:
     """One stage's settings together with the path, workflow and result managers built from them."""
 
-    def __init__(self, settings, stage_name):
+    def __init__(self, settings: Settings, stage_name: str) -> None:
         self.settings = settings
         self.target = settings.target
         self.stage = settings.stage(stage_name)
-        self.prev_stage = settings.prev(self.stage) if self.stage.prev else None
+        self.prev_stage: Optional[Stage] = (
+            settings.prev(self.stage) if self.stage.prev else None
+        )
         self.paths = PathManager(settings)
         self.workflow_manager = WorkflowManager(settings)
         self.result_manager = ResultAnalysisManager(settings)
-        self.seed_plans = {}  # band -> SeedPlan built while writing a follow-up stage's DAGs
-        self.seed_counts = {"seeds": 0, "new": 0}
+        # band -> SeedPlan built while writing a follow-up stage's DAGs
+        self.seed_plans: dict[int, SeedPlan] = {}
+        self.seed_counts: dict[str, int] = {"seeds": 0, "new": 0}
 
-    def taskname(self, freq):
+    def taskname(self, freq: int) -> str:
         return self.stage.taskname(self.target, freq)
 
-    def prev_outlier_file(self, freq, cluster):
+    def prev_outlier_file(self, freq: int, cluster: bool) -> Path:
         prev_taskname = self.prev_stage.taskname(self.target, freq)
         return self.paths.outlier_file(
             freq,
@@ -40,20 +48,22 @@ class StageContext:
             location="existing",
         )
 
-    def spindown_model(self, freq):
+    def spindown_model(self, freq: int) -> PowerLawModel:
         spindown = self.settings.search.spindown
         return PowerLawModel(
             nc_min=spindown.nc_min, nc_max=spindown.nc_max, tau=spindown.tau(freq)
         )
 
     @cache
-    def h0_by_freq(self):
+    def h0_by_freq(self) -> dict[int, float]:
+        """{1 Hz band: h0} of the stage's h0_file."""
         freqs, h0_values, _ = np.loadtxt(
             self.settings.environment.home_dir / self.stage.injection.h0_file
         ).T
-        return dict(zip(freqs.astype(int), h0_values))
+        return {int(freq): float(h0) for freq, h0 in zip(freqs, h0_values)}
 
-    def search_params(self, freq):
+    def search_params(self, freq: int) -> Shaped[np.ndarray, " n_param"]:
+        """Parameter rows of the initial search's Weave jobs in the band."""
         target = self.target
         generator = SearchParamGenerator(self.spindown_model(freq), self.stage.order)
         params = generator.generate_parameters(
@@ -69,7 +79,12 @@ class StageContext:
         )
         return params[freq].data
 
-    def make_weave_dag(self, freq, search_params, **extra_dag_kwargs):
+    def make_weave_dag(
+        self,
+        freq: int,
+        search_params: Shaped[np.ndarray, " n_param"],
+        **extra_dag_kwargs: Any,
+    ) -> Path:
         stage = self.stage
         return self.workflow_manager.make_search_dag(
             self.taskname(freq),

@@ -9,20 +9,30 @@ Writes to <home_dir>/metricSetup/ (or out_dir)
 
 import shutil
 import subprocess
+from pathlib import Path
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
+from jaxtyping import Float, Int
 from matplotlib.patches import Patch
 
 from paws.filepaths import PathManager
+from paws.settings import FixedSettings, Settings
 
 START_TIME = 1368970000
 SFT_DURATION = 1800
 DETECTOR_COLORS = ("#2a78d6", "#eb6834", "#3a9d5d", "#8e5bd6")
 
 
-def read_timestamps(paths, detectors, out_dir, sft_band, refresh):
-    """SFT timestamps of each detector, read from one SFT file each (cached as text)."""
+def read_timestamps(
+    paths: PathManager,
+    detectors: list[str],
+    out_dir: Path,
+    sft_band: int,
+    refresh: bool,
+) -> dict[str, Float[np.ndarray, " n_sft"]]:
+    """SFT timestamps [GPS s] of each detector, read from one SFT file each (cached as text)."""
     timestamps = {}
     for detector in detectors:
         cache_path = out_dir / f"o4ab_{detector.lower()}_timestamps.txt"
@@ -37,8 +47,10 @@ def read_timestamps(paths, detectors, out_dir, sft_band, refresh):
     return timestamps
 
 
-def make_segments(timestamps, tcoh_day):
-    """Consecutive segments of tcoh_day days from START_TIME; empty segments are skipped by
+def make_segments(
+    timestamps: dict[str, Float[np.ndarray, " n_sft"]], tcoh_day: float
+) -> Int[np.ndarray, "n_segment 2"]:
+    """Consecutive (start, end) segments of tcoh_day days from START_TIME; empty segments are skipped by
     restarting at the next SFT."""
     tcoh = tcoh_day * 86400
     all_timestamps = np.unique(np.concatenate(list(timestamps.values())))
@@ -60,7 +72,10 @@ def make_segments(timestamps, tcoh_day):
     return np.array(segments, dtype=np.int64)
 
 
-def report_coverage(timestamps, segments):
+def report_coverage(
+    timestamps: dict[str, Float[np.ndarray, " n_sft"]],
+    segments: Int[np.ndarray, "n_segment 2"],
+) -> None:
     """Number of SFTs of each detector inside the segments."""
     for detector, times in timestamps.items():
         inside = np.zeros(times.size, bool)
@@ -75,7 +90,9 @@ def report_coverage(timestamps, segments):
         print(f"{detector}: data in {n_segments_with_data} of {len(segments)} segments")
 
 
-def sft_runs(times, origin, time_unit):
+def sft_runs(
+    times: Float[np.ndarray, " n_sft"], origin: int, time_unit: int
+) -> list[tuple[float, float]]:
     """Contiguous runs of SFTs as (start, width) in time_unit since origin, for broken_barh."""
     times = np.sort(times)
     breaks = np.flatnonzero(np.diff(times) != SFT_DURATION)
@@ -84,9 +101,14 @@ def sft_runs(times, origin, time_unit):
     return list(zip((starts - origin) / time_unit, (ends - starts) / time_unit))
 
 
-def plot_coverage(timestamps, segments, tcoh_day, path):
+def plot_coverage(
+    timestamps: dict[str, Float[np.ndarray, " n_sft"]],
+    segments: Int[np.ndarray, "n_segment 2"],
+    tcoh_day: float,
+    path: Path,
+) -> None:
     week = 7 * 86400
-    origin = segments[0, 0]
+    origin = int(segments[0, 0])
     n_detectors = len(timestamps)
     plt.style.use("paws")
     fig, ax = plt.subplots(figsize=(16, 5))
@@ -129,8 +151,14 @@ def plot_coverage(timestamps, segments, tcoh_day, path):
 
 
 def run_weave_setup(
-    settings, segment_file, tcoh_day, spindowns, metric_type, out_dir, force
-):
+    settings: FixedSettings,
+    segment_file: Path,
+    tcoh_day: float,
+    spindowns: int,
+    metric_type: str,
+    out_dir: Path,
+    force: bool,
+) -> None:
     metric_path = out_dir / f"o4ab_t{tcoh_day:g}_s{spindowns}.fts"
     if metric_path.exists() and not force:
         raise SystemExit(f"{metric_path} exists (use --force to overwrite)")
@@ -152,16 +180,16 @@ def run_weave_setup(
 
 
 def make_segments_and_metric(
-    settings,
-    tcoh_day,
-    make_metric_file,
-    spindowns,
-    metric_type,
-    out_dir,
-    sft_band,
-    refresh_timestamps,
-    force,
-):
+    settings: Settings,
+    tcoh_day: float,
+    make_metric_file: bool,
+    spindowns: int,
+    metric_type: str,
+    out_dir: Optional[Path],
+    sft_band: int,
+    refresh_timestamps: bool,
+    force: bool,
+) -> None:
     """Segment list and coverage plot for tcoh_day; with make_metric_file also the Weave metric.
     out_dir None: <home_dir>/metricSetup."""
     out_dir = out_dir or settings.environment.home_dir / "metricSetup"

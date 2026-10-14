@@ -60,7 +60,9 @@ def test_stage_thresholds_from_file(settings):
     write_threshold_yaml(settings, "test-t10", file)
     thresholds = stage_thresholds(settings, settings.stage("followup-1"))
     np.testing.assert_array_equal(thresholds.band_edges, [20, 100, 400])
-    np.testing.assert_allclose(thresholds.at("excess_ratio", [25, 150]), [1.2345, 1.5])
+    np.testing.assert_allclose(
+        thresholds.at("excess_ratio", np.array([25, 150])), [1.2345, 1.5]
+    )
     np.testing.assert_allclose(thresholds.at("h1_l1_window", 150), [-2.0, 2.0])
     np.testing.assert_allclose(thresholds.at("seed_h1_l1_window", 50), [-3.0, 3.0])
     assert thresholds.growth is None and thresholds.excess_ratio_lowest is None
@@ -173,12 +175,14 @@ def test_record_threshold_file(settings):
 
 def test_log10_noise_ratio(settings):
     # no noise-weights file: the window is on r_HL itself
-    assert list(log10_noise_ratio(settings, None, [50, 51])) == [0.0, 0.0]
+    assert list(log10_noise_ratio(settings, None, np.array([50, 51]))) == [0.0, 0.0]
+    assert log10_noise_ratio(settings, None, 50) == 0.0
     # with one: log10(W_L1 / W_H1) of each candidate's 1 Hz band
     _write_rows(
         settings.config_dir / "noise.csv", [[50, 1.0, 10.0, 5, 5], [51, 4.0, 1.0, 5, 5]]
     )
     np.testing.assert_allclose(
-        log10_noise_ratio(settings, "noise.csv", [51, 50, 50]),
+        log10_noise_ratio(settings, "noise.csv", np.array([51, 50, 50])),
         [np.log10(0.25), 1.0, 1.0],
     )
+    assert log10_noise_ratio(settings, "noise.csv", 50) == 1.0

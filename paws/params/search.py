@@ -1,3 +1,7 @@
+"""Search parameter tables of the initial search: the f0 / f1dot / f2dot (/ f3dot / f4dot) cells of each band."""
+
+from typing import Optional, Union
+
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
@@ -5,7 +9,7 @@ from tqdm import tqdm
 
 from paws.definitions import phase_param_name
 
-from .models import PowerLawModel
+from .models import PowerLawModel, UniformModel
 
 
 class SearchParamGenerator:
@@ -14,13 +18,14 @@ class SearchParamGenerator:
     Uses the provided model (PowerLaw or Uniform) to determine parameter boundaries.
     """
 
-    def __init__(self, model, freq_deriv_order=2):
+    def __init__(
+        self, model: Union[PowerLawModel, UniformModel], freq_deriv_order: int = 2
+    ) -> None:
         """
         Initialize the generator.
 
         Parameters:
         - model (object): Instance of PowerLawModel or UniformModel (REQUIRED).
-        - f0_band (float): Frequency band width for each search segment.
         - freq_deriv_order (int): Order of frequency derivatives (default: 2).
         """
         self.freq_deriv_order = freq_deriv_order
@@ -30,14 +35,21 @@ class SearchParamGenerator:
         self.model = model
 
         # Initialize attributes that are set later via generate_parameters
-        self.alpha = None
-        self.dalpha = None
-        self.delta = None
-        self.ddelta = None
+        self.alpha: Optional[float] = None
+        self.dalpha: Optional[float] = None
+        self.delta: Optional[float] = None
+        self.ddelta: Optional[float] = None
 
     def generate_parameter_table(
-        self, freq, df, n_f1, n_f2, n_f3=1, n_f4=1, bandwidth=1.0
-    ):
+        self,
+        freq: float,
+        df: float,
+        n_f1: int,
+        n_f2: int,
+        n_f3: int = 1,
+        n_f4: int = 1,
+        bandwidth: float = 1.0,
+    ) -> fits.BinTableHDU:
         """
         Generate a parameter table for a specific frequency chunk.
 
@@ -164,21 +176,21 @@ class SearchParamGenerator:
 
     def generate_parameters(
         self,
-        alpha,
-        dalpha,
-        delta,
-        ddelta,
-        f0_min,
-        f0_max,
-        file_bandwidth=1.0,
-        df=0.02,
-        df1=1e-9,
-        df2=1e-19,
-        df3=None,
-        df4=None,
-    ):
+        alpha: float,
+        dalpha: float,
+        delta: float,
+        ddelta: float,
+        f0_min: float,
+        f0_max: float,
+        file_bandwidth: float = 1.0,
+        df: float = 0.02,
+        df1: float = 1e-9,
+        df2: float = 1e-19,
+        df3: Optional[float] = None,
+        df4: Optional[float] = None,
+    ) -> dict[int, fits.BinTableHDU]:
         """
-        Generate initial search parameters.
+        Generate initial search parameters: {integer start frequency: parameter table} per 1 Hz band.
 
         Parameters:
             - f0_min, f0_max (float): Frequency range (e.g., 31.5 to 31.8).

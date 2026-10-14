@@ -12,13 +12,16 @@ The Condor jobs (paws.jobs) read OSDF copies of environment.yaml, data.yaml and 
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, TypeVar, Union
 
 import numpy as np
 import yaml
+from jaxtyping import Float
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SECONDS_PER_YEAR = 86400 * 365.25
+
+ModelT = TypeVar("ModelT", bound="YamlModel")
 
 
 class YamlModel(BaseModel):
@@ -27,13 +30,13 @@ class YamlModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     @classmethod
-    def from_yaml(cls, path):
+    def from_yaml(cls: type[ModelT], path: Union[str, Path]) -> ModelT:
         with open(path) as f:
             return cls.model_validate(yaml.safe_load(f))
 
     @model_validator(mode="before")
     @classmethod
-    def _drop_anchor_keys(cls, data):
+    def _drop_anchor_keys(cls, data: Any) -> Any:
         if isinstance(data, dict):
             return {
                 key: value
@@ -82,9 +85,8 @@ class Data(YamlModel):
     """data.yaml: the SFTs and the target."""
 
     sft_source: str  # data label in result paths
-    sft_dir: (
-        Path  # local OSDF mount path of the SFTs: <sft_dir>/<detector>/<band>/*.sft
-    )
+    # local OSDF mount path of the SFTs: <sft_dir>/<detector>/<band>/*.sft
+    sft_dir: Path
     detectors: list[str]
     ref_time: int  # GPS reference time of the frequency parameters
     f0_band: float  # Hz, frequency sub-band of one Weave job
@@ -105,13 +107,13 @@ class Spindown(YamlModel):
     age_knots: list[tuple[float, float]]
 
     @model_validator(mode="after")
-    def _knots_increase(self):
+    def _knots_increase(self) -> "Spindown":
         freqs = [freq for freq, _ in self.age_knots]
         if not freqs or any(f1 >= f2 for f1, f2 in zip(freqs, freqs[1:])):
             raise ValueError("age_knots need strictly increasing frequencies")
         return self
 
-    def age(self, freq):
+    def age(self, freq: float) -> float:
         """Age [years] at freq."""
         return float(
             np.interp(
@@ -121,7 +123,7 @@ class Spindown(YamlModel):
             )
         )
 
-    def tau(self, freq):
+    def tau(self, freq: float) -> float:
         """Age [s] at freq."""
         return SECONDS_PER_YEAR * self.age(freq)
 
@@ -188,15 +190,15 @@ class Stage(YamlModel):
     separate_saturated: bool
 
     @property
-    def is_search(self):
+    def is_search(self) -> bool:
         return self.prev is None
 
     @property
-    def is_injection(self):
+    def is_injection(self) -> bool:
         return self.injection is not None
 
     @model_validator(mode="after")
-    def _check(self):
+    def _check(self) -> "Stage":
         if self.is_search:
             if None in (self.search_df1, self.search_df2):
                 raise ValueError(
@@ -225,15 +227,15 @@ class Stage(YamlModel):
             )
         return self
 
-    def taskname(self, target, freq):
+    def taskname(self, target: Target, freq: int) -> str:
         return f"{target.name}_{self.name}_TCoh{self.tcoh}_O{self.order}_{freq}Hz"
 
     @property
-    def freqs(self):
+    def freqs(self) -> list[int]:
         return [f for f in range(*self.bands) if f not in self.skip_bands]
 
 
-def _name_stages(data):
+def _name_stages(data: Any) -> Any:
     """Puts each stage's key into its `name` field."""
     if isinstance(data, dict) and isinstance(data.get("stages"), dict):
         data = {
@@ -258,11 +260,11 @@ class Search(YamlModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _name(cls, data):
+    def _name(cls, data: Any) -> Any:
         return _name_stages(data)
 
     @model_validator(mode="after")
-    def _initial_searches(self):
+    def _initial_searches(self) -> "Search":
         for stage in self.stages.values():
             if not stage.is_search:
                 raise ValueError(
@@ -295,7 +297,7 @@ class Calibration(YamlModel):
     bands: list[int]
 
     @model_validator(mode="after")
-    def _check(self):
+    def _check(self) -> "Calibration":
         if (self.growth_percentile is None) != (self.growth_search_injection is None):
             raise ValueError(
                 "growth_percentile and growth_search_injection are set together"
@@ -318,11 +320,11 @@ class Followup(YamlModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _name(cls, data):
+    def _name(cls, data: Any) -> Any:
         return _name_stages(data)
 
     @model_validator(mode="after")
-    def _later_stages(self):
+    def _later_stages(self) -> "Followup":
         for stage in self.stages.values():
             if stage.is_search:
                 raise ValueError(
@@ -366,7 +368,7 @@ class ThresholdFile(YamlModel):
     bands: list[ThresholdBand]
 
     @model_validator(mode="after")
-    def _check(self):
+    def _check(self) -> "ThresholdFile":
         if not self.bands:
             raise ValueError("a threshold file needs at least one band")
         for lower, upper in zip(self.bands, self.bands[1:]):
@@ -395,7 +397,12 @@ class FixedSettings:
     """environment + data + search: the settings fixed once the search has run, which the Condor jobs read from
     OSDF copies of the three files."""
 
-    def __init__(self, environment_file, data_file, search_file):
+    def __init__(
+        self,
+        environment_file: Union[str, Path],
+        data_file: Union[str, Path],
+        search_file: Union[str, Path],
+    ) -> None:
         self.environment = Environment.from_yaml(environment_file)
         self.data = Data.from_yaml(data_file)
         self.search = Search.from_yaml(search_file)
@@ -405,7 +412,7 @@ class FixedSettings:
 class Settings(FixedSettings):
     """All settings of a config directory: FixedSettings plus followup.yaml, with the stages of both files."""
 
-    def __init__(self, config_dir):
+    def __init__(self, config_dir: Optional[Union[str, Path]]) -> None:
         if not config_dir:
             raise RuntimeError(
                 "no config directory: pass --config-dir or set PAWS_CONFIG_DIR"
@@ -420,8 +427,13 @@ class Settings(FixedSettings):
         twice = set(self.search.stages) & set(self.followup.stages)
         if twice:
             raise ValueError(f"stages in both search.yaml and followup.yaml: {twice}")
-        self.stages = {**self.search.stages, **self.followup.stages}
-        self._sky_grids = {}
+        self.stages: dict[str, Stage] = {
+            **self.search.stages,
+            **self.followup.stages,
+        }
+        self._sky_grids: dict[
+            str, tuple[Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"]]
+        ] = {}
         self._check_references()
         for stage in self.stages.values():
             if stage.sky_grid:
@@ -431,7 +443,7 @@ class Settings(FixedSettings):
                         f"{stage.name}: n_sky={stage.n_sky} but {stage.sky_grid} has {n_grid_points} points"
                     )
 
-    def _check_references(self):
+    def _check_references(self) -> None:
         """Every stage, reuse, injection and chain reference names a defined stage of the right kind."""
         for stage in self.stages.values():
             if stage.prev is not None and stage.prev not in self.stages:
@@ -486,7 +498,7 @@ class Settings(FixedSettings):
                 if name not in self.stages:
                     raise ValueError(f"chain {chain}: stage {name!r} is not defined")
 
-    def stage(self, name):
+    def stage(self, name: str) -> Stage:
         try:
             return self.stages[name]
         except KeyError:
@@ -494,10 +506,10 @@ class Settings(FixedSettings):
                 f"stage {name!r} is not in {self.config_dir}/search.yaml or followup.yaml"
             ) from None
 
-    def prev(self, stage):
+    def prev(self, stage: Stage) -> Stage:
         return self.stage(stage.prev)
 
-    def chain_stages(self, stage):
+    def chain_stages(self, stage: Stage) -> list[Stage]:
         """The earlier stages of a follow-up's chain, from the initial search it starts from to stage.prev."""
         stages = [self.prev(stage)]
         while not stages[0].is_search:
@@ -508,7 +520,9 @@ class Settings(FixedSettings):
             )
         return stages
 
-    def sky_offsets(self, stage):
+    def sky_offsets(
+        self, stage: Stage
+    ) -> Optional[tuple[Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"]]]:
         """(d_alpha, d_delta) arrays of the stage's sky grid, or None for a single sky point."""
         if not stage.sky_grid:
             return None
@@ -519,25 +533,25 @@ class Settings(FixedSettings):
             )
         return self._sky_grids[stage.sky_grid]
 
-    def config_path(self, name):
+    def config_path(self, name: str) -> Path:
         return self.config_dir / name
 
-    def threshold_file_path(self, name):
+    def threshold_file_path(self, name: str) -> Path:
         return self.config_dir / "thresholds" / f"{name}.yaml"
 
     # files staged on OSDF for the Condor jobs
-    def osdf_url(self, *parts):
+    def osdf_url(self, *parts: str) -> str:
         return (
             "osdf://" + str(self.environment.osdf_dir.joinpath(*parts))[len("/osdf") :]
         )
 
-    def metric_url(self, stage):
+    def metric_url(self, stage: Stage) -> str:
         return self.osdf_url("metricSetup", stage.metric)
 
-    def image_url(self, stage):
+    def image_url(self, stage: Stage) -> Optional[str]:
         return self.osdf_url("images", stage.image) if stage.image else None
 
-    def job_config_urls(self):
+    def job_config_urls(self) -> tuple[str, str, str]:
         """OSDF copies of environment.yaml, data.yaml and search.yaml that the outlier / upper-limit jobs read."""
         return tuple(
             self.osdf_url("config", name)

@@ -3,6 +3,7 @@
 import argparse
 import os
 from pathlib import Path
+from typing import Optional
 
 from paws.pipeline.dag import make_stage_dags
 from paws.pipeline.metric import make_segments_and_metric
@@ -12,7 +13,7 @@ from paws.pipeline.stage_thresholds import write_threshold_file
 from paws.settings import Settings
 
 
-def build_parser():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="paws",
         description=__doc__,
@@ -103,7 +104,7 @@ def build_parser():
     return parser
 
 
-def main(argv=None):
+def main(argv: Optional[list[str]] = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     settings = Settings(args.config_dir or os.environ.get("PAWS_CONFIG_DIR"))

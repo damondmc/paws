@@ -8,9 +8,12 @@ file has h1_l1_noise_weights) and its growth cut over the search outlier the see
 
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Pool
+from pathlib import Path
+from typing import Any, Optional
 
 import numpy as np
 from astropy.io import fits
+from jaxtyping import Shaped
 from tqdm import tqdm
 
 from paws.analysis.outlier import loudest_rows
@@ -26,6 +29,7 @@ from paws.pipeline.dag import dag_list_path
 from paws.pipeline.history import chain_history, history_column
 from paws.pipeline.noise_weights import log10_noise_ratio
 from paws.pipeline.seed_plan import (
+    SeedPlan,
     default_seed_plan,
     load_seed_plan,
     result_files_per_seed,
@@ -33,6 +37,7 @@ from paws.pipeline.seed_plan import (
 )
 from paws.pipeline.seeds import read_seed_rows, seed_outlier_file, selected_seed_rows
 from paws.pipeline.stage_thresholds import record_threshold_file, stage_thresholds
+from paws.settings import Settings
 
 N_PROCESSES = 8
 SEEDS_PER_CHUNK = 2000  # loudest rows are read and cached in chunks of this many seeds
@@ -41,8 +46,8 @@ SEEDS_PER_CHUNK = 2000  # loudest rows are read and cached in chunks of this man
 # ------------------------ make_outlier stages -------------------------
 
 
-def total_semicoherent_templates(context, freq, n_jobs):
-    def templates_of_job(job_index):
+def total_semicoherent_templates(context: StageContext, freq: int, n_jobs: int) -> int:
+    def templates_of_job(job_index: int) -> int:
         result_file = context.paths.weave_output_file(
             freq, context.taskname(freq), job_index, context.stage.name
         )
@@ -52,7 +57,7 @@ def total_semicoherent_templates(context, freq, n_jobs):
         return sum(executor.map(templates_of_job, range(1, n_jobs + 1)))
 
 
-def make_outlier_kwargs(context):
+def make_outlier_kwargs(context: StageContext) -> dict[str, Any]:
     stage = context.stage
     return dict(
         num_toplist=stage.keep,
@@ -68,7 +73,7 @@ def make_outlier_kwargs(context):
     )
 
 
-def outliers_search(context, freq):
+def outliers_search(context: StageContext, freq: int) -> None:
     n_jobs = context.search_params(freq).size
     n_templates = total_semicoherent_templates(context, freq, n_jobs)
     mean2f_threshold = search_mean2f_threshold(n_templates, context.stage.n_seg)
@@ -81,7 +86,7 @@ def outliers_search(context, freq):
     )
 
 
-def outliers_injection(context, freq):
+def outliers_injection(context: StageContext, freq: int) -> None:
     search_file = context.prev_outlier_file(freq, cluster=True)
     if not search_file.is_file():
         print(f"{freq} Hz: no {context.prev_stage.name} outlier file, skipped")
@@ -96,7 +101,7 @@ def outliers_injection(context, freq):
     )
 
 
-def outliers_injection_followup(context, freq):
+def outliers_injection_followup(context: StageContext, freq: int) -> None:
     seed_rows, _ = read_seed_rows(context.settings, context.paths, context.stage, freq)
     if seed_rows is None or len(seed_rows) == 0:
         return
@@ -112,7 +117,9 @@ def outliers_injection_followup(context, freq):
 # -------------------- follow-up of real candidates --------------------
 
 
-def band_seed_plan(context, freq, seed_rows):
+def band_seed_plan(
+    context: StageContext, freq: int, seed_rows: Shaped[np.ndarray, " n_seed"]
+) -> SeedPlan:
     """The band's saved seed plan; built (and saved) when the stage's DAG step did not write one."""
     plan = load_seed_plan(context.settings, context.stage, freq)
     if plan is None:
@@ -131,7 +138,7 @@ def band_seed_plan(context, freq, seed_rows):
     return plan
 
 
-def loudest_cache_path(context, freq, first_seed):
+def loudest_cache_path(context: StageContext, freq: int, first_seed: int) -> Path:
     return (
         context.settings.environment.home_dir
         / "results"
@@ -141,8 +148,9 @@ def loudest_cache_path(context, freq, first_seed):
     )
 
 
-def cache_loudest_chunk(chunk):
-    """Loudest row of each seed of one chunk, saved to cache_path (skipped when already cached)."""
+def cache_loudest_chunk(chunk: tuple[Path, list[list[Path]], str]) -> None:
+    """Loudest row of each seed of one chunk (cache path, result files per seed, label), saved to the cache path
+    (skipped when already cached)."""
     cache_path, files_per_seed, label = chunk
     if cache_path.exists():
         return
@@ -154,7 +162,7 @@ def cache_loudest_chunk(chunk):
     print(f"{label}: done", flush=True)
 
 
-def collect_thresholded_followup(context, bands):
+def collect_thresholded_followup(context: StageContext, bands: list[int]) -> None:
     """Outlier files of a follow-up of real candidates: one INFO row per seed, the seeds whose loudest
     candidate passes the excess ratio threshold (and the H1/L1 excess-ratio window and growth cut, when set) as
     outliers, each with the statistics of the earlier stages of its chain (chain_history)."""
@@ -251,7 +259,9 @@ def collect_thresholded_followup(context, bands):
 # ------------------------------- stages -------------------------------
 
 
-def collect_stage_outliers(settings, stage_name, bands):
+def collect_stage_outliers(
+    settings: Settings, stage_name: str, bands: Optional[list[int]]
+) -> None:
     """Outlier files of every band of the stage (or only `bands`; None: the stage's bands)."""
     context = StageContext(settings, stage_name)
     stage = context.stage
@@ -277,7 +287,7 @@ def collect_stage_outliers(settings, stage_name, bands):
         collect_band(context, freq)
 
 
-def outlier_collection_dag(context, freq):
+def outlier_collection_dag(context: StageContext, freq: int) -> Optional[Path]:
     stage = context.stage
     seed_rows, _ = read_seed_rows(context.settings, context.paths, stage, freq)
     if seed_rows is None or len(seed_rows) == 0:
@@ -308,7 +318,9 @@ def outlier_collection_dag(context, freq):
     )
 
 
-def make_stage_outlier_dags(settings, stage_name, bands):
+def make_stage_outlier_dags(
+    settings: Settings, stage_name: str, bands: Optional[list[int]]
+) -> None:
     """Outlier-collection Condor DAGs of an injection follow-up stage and their DAG list."""
     context = StageContext(settings, stage_name)
     stage = context.stage

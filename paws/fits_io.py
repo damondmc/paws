@@ -1,12 +1,21 @@
 """Reading FITS files: tables, Weave result headers and outlier file headers."""
 
+from pathlib import Path
+from typing import Optional, Union
+
 import numpy as np
 from astropy.io import fits
+from jaxtyping import Float, Shaped
 
 from paws.definitions import phase_param_name
 
+# one row of a FITS table (astropy) or of a structured array (numpy)
+TableRow = Union[fits.FITS_record, np.void]
 
-def read_fits_table(path, extension):
+
+def read_fits_table(
+    path: Union[str, Path], extension: Union[int, str]
+) -> Optional[Shaped[np.ndarray, " n_row"]]:
     """Table `extension` (index or name) of a FITS file as a numpy array (None when the HDU has no data part;
     an empty table HDU, as written for a band without outliers, gives an empty array)."""
     with fits.open(path) as hdul:
@@ -14,12 +23,16 @@ def read_fits_table(path, extension):
         return np.array(table) if table is not None else None
 
 
-def weave_template_spacing(weave_result_path, freq_deriv_order):
+def weave_template_spacing(
+    weave_result_path: Union[str, Path], freq_deriv_order: int
+) -> dict[str, float]:
     """Template spacings (df, df1dot, ...) of a Weave result file (see weave_header_spacing)."""
     return weave_header_spacing(fits.getheader(weave_result_path), freq_deriv_order)
 
 
-def weave_header_spacing(header, freq_deriv_order):
+def weave_header_spacing(
+    header: fits.Header, freq_deriv_order: int
+) -> dict[str, float]:
     """Template spacings (df, df1dot, ...) from a Weave result's primary header: each searched range over its
     number of semicoherent templates, from the PROGARG and NSEMITMPL keys."""
     freq_param_names, spacing_names = phase_param_name(freq_deriv_order)
@@ -51,7 +64,9 @@ def weave_header_spacing(header, freq_deriv_order):
     return spacing
 
 
-def read_weave_run_stats(weave_result_path):
+def read_weave_run_stats(
+    weave_result_path: Union[str, Path],
+) -> dict[str, Union[int, float]]:
     """Cost of one Weave run from its result header: semicoherent templates, peak memory (MB), wall and CPU
     time (s)."""
     header = fits.getheader(weave_result_path)
@@ -63,7 +78,11 @@ def read_weave_run_stats(weave_result_path):
     }
 
 
-def read_injection_outliers(clustered_outlier_path):
+def read_injection_outliers(
+    clustered_outlier_path: Union[str, Path],
+) -> Optional[
+    tuple[Shaped[np.ndarray, " n_injection"], Float[np.ndarray, " n_injection"]]
+]:
     """(outlier rows, injected Freq) of one band of an injection stage; None when the band has no outliers."""
     with fits.open(clustered_outlier_path) as hdul:
         if hdul[1].data is None or len(hdul[1].data) == 0:
@@ -71,7 +90,9 @@ def read_injection_outliers(clustered_outlier_path):
         return np.array(hdul[1].data), np.array(hdul[2].data["Freq"])
 
 
-def outlier_file_spacing(outlier_path, freq_deriv_order):
+def outlier_file_spacing(
+    outlier_path: Union[str, Path], freq_deriv_order: int
+) -> dict[str, float]:
     """Grid spacings (df, df1dot, ...) written in an outlier file's primary header."""
     _, spacing_names = phase_param_name(freq_deriv_order)
     return {name: fits.getval(outlier_path, name, 0) for name in spacing_names}

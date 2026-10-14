@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 from astropy.io import fits
+from jaxtyping import Shaped
 
 from paws.analysis.sigmoid import SigmoidFitter
 from paws.definitions import phase_param_name
@@ -23,11 +24,11 @@ logging.basicConfig(
 )
 
 
-def log_section(title):
+def log_section(title: str) -> None:
     logging.info(f"\n{'=' * 20} {title.upper()} {'=' * 20}")
 
 
-def print_args(args):
+def print_args(args: argparse.Namespace) -> None:
     """Prints arguments in a clean, aligned table."""
     log_section("JOB PARAMETERS")
     arg_dict = vars(args)
@@ -36,7 +37,9 @@ def print_args(args):
     logging.info("=" * 60 + "\n")
 
 
-def scale_injection(ip_data, h0):
+def scale_injection(
+    ip_data: Shaped[np.ndarray, " n_injection"], h0: float
+) -> Shaped[np.ndarray, " n_injection"]:
     """Scales injection parameters to a specific h0."""
     params = ip_data.copy()
     params["aCross"] *= h0
@@ -44,7 +47,7 @@ def scale_injection(ip_data, h0):
     return params
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Calculate 95% Upper Limit via Injection."
     )

@@ -1,24 +1,24 @@
+"""Clustering of outliers in the phase parameter space."""
+
 import numpy as np
+from jaxtyping import Int, Shaped
 
 from ..definitions import phase_param_name
 
-# =============================================================================
-# Data Analysis & Clustering
-# =============================================================================
 
+def clustering(
+    data: Shaped[np.ndarray, " n_outlier"],
+    spacing: dict[str, float],
+    cluster_n_spacing: float = 4.0,
+) -> tuple[
+    Int[np.ndarray, " n_cluster"],
+    Int[np.ndarray, " n_cluster"],
+    list[Int[np.ndarray, " _"]],
+]:
+    """Clusters outliers by proximity in the phase parameter space: from the loudest outlier down, every outlier
+    within cluster_n_spacing grid spacings (spacing: {df, df1dot, ...}) in every dimension joins its cluster.
 
-def clustering(data, spacing, cluster_n_spacing=4.0):
-    """
-    Clusters outliers based on spatial proximity in phase parameter space.
-
-    Parameters:
-        data (astropy.table.Table): The outlier data.
-        spacing (numpy.ndarray): Spacing values for each data point.
-        cluster_n_spacing (float): Clustering threshold (grid units).
-    Returns:
-        centers_idx (numpy.ndarray): Indices of cluster centers.
-        cluster_size (numpy.ndarray): Sizes of each cluster.
-        cluster_member (list of numpy.ndarray): Members of each cluster.
+    Returns (index of each cluster's center, number of outliers in each cluster, indices of each cluster's members).
     """
     # Extract phase parameter names
     freq_deriv_order = len(spacing) - 1

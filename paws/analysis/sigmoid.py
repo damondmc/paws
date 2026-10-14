@@ -1,6 +1,15 @@
+"""Sigmoid fit of the detection efficiency against the injected strain, for the h95 upper limit."""
+
+from pathlib import Path
+from typing import Optional, Union
+
 import matplotlib.pyplot as plt
 import numpy as np
+from jaxtyping import Float
+from matplotlib.figure import Figure
 from scipy.optimize import curve_fit
+
+from paws.settings import Target
 
 
 class SigmoidFitter:
@@ -8,44 +17,56 @@ class SigmoidFitter:
     Handles the sigmoid curve fitting to determine upper limits (h95).
     """
 
-    def __init__(self, target, n_inj=100, n_amp=1):
+    def __init__(self, target: Target, n_inj: int = 100, n_amp: int = 1) -> None:
         self.target = target
         self.injPerPoint = int(n_inj / n_amp)
-        self.popt = None
-        self.pcov = None
-        self.h0_mean = 0
-        self.h0_max = 1
+        self.popt: Optional[Float[np.ndarray, "2"]] = None  # (steepness, midpoint)
+        self.pcov: Optional[Float[np.ndarray, "2 2"]] = None
+        self.h0_mean: float = 0
+        self.h0_max: float = 1
 
     @staticmethod
-    def sigmoid(x, k, x0):
+    def sigmoid(
+        x: Union[float, Float[np.ndarray, " n_point"]], k: float, x0: float
+    ) -> Union[float, Float[np.ndarray, " n_point"]]:
         """Sigmoid function: 1 / (1 + exp(-k*(x-x0)))"""
         return 1.0 / (1.0 + np.exp(-k * (x - x0)))
 
     @staticmethod
-    def inv_sigmoid(y, k, x0):
+    def inv_sigmoid(y: float, k: float, x0: float) -> float:
         """Inverse sigmoid function to find x for a given detection probability y."""
         # Clip y to avoid log(0) or log(negative)
         y = np.clip(y, 1e-9, 1.0 - 1e-9)
         return -np.log(1.0 / y - 1.0) / k + x0
 
-    def _rescale_h0(self, h0, h0_list):
+    def _rescale_h0(
+        self,
+        h0: Union[float, Float[np.ndarray, " n_point"]],
+        h0_list: Float[np.ndarray, " n_h0"],
+    ) -> Union[float, Float[np.ndarray, " n_point"]]:
         """Normalizes h0 values for better fitting stability."""
         self.h0_mean = np.mean(h0_list)
         self.h0_max = np.max(h0_list)
         return (h0 - self.h0_mean) / self.h0_max
 
-    def _inv_rescale_h0(self, x):
+    def _inv_rescale_h0(self, x: float) -> float:
         """Converts normalized x back to physical h0."""
         return x * self.h0_max + self.h0_mean
 
-    def binomial_error(self, y, n):
+    def binomial_error(
+        self, y: Float[np.ndarray, " n_h0"], n: int
+    ) -> Float[np.ndarray, " n_h0"]:
         """Calculates standard error for binomial distribution."""
         err = np.sqrt(y * (1.0 - y) / n)
         # Avoid zero error for fitting weights
         err[err == 0] = 1.0 / n
         return err
 
-    def fit(self, h0_list, efficiency_list):
+    def fit(
+        self,
+        h0_list: Float[np.ndarray, " n_h0"],
+        efficiency_list: Float[np.ndarray, " n_h0"],
+    ) -> bool:
         """
         Fits the sigmoid curve to the h0 vs efficiency data.
         """
@@ -68,7 +89,7 @@ class SigmoidFitter:
             print(f"Sigmoid fitting failed: {e}")
             return False
 
-    def get_h_percentile(self, percentile=0.95):
+    def get_h_percentile(self, percentile: float = 0.95) -> tuple[float, float]:
         """
         Calculates the h0 value at a specific detection probability (e.g., 95%).
         Returns: (h_value, h_error)
@@ -98,7 +119,12 @@ class SigmoidFitter:
 
         return h_val, h_err
 
-    def plot(self, h0_list, p_list, save_path=None):
+    def plot(
+        self,
+        h0_list: Float[np.ndarray, " n_h0"],
+        p_list: Float[np.ndarray, " n_h0"],
+        save_path: Optional[Union[str, Path]] = None,
+    ) -> Figure:
         """Generates the Upper Limit plot."""
         fig, ax = plt.subplots(figsize=(8, 6))
 

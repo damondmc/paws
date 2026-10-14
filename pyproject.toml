@@ -13,6 +13,7 @@ dependencies = [
     "matplotlib",
     "pydantic>=2",
     "pyyaml>=6.0.3",
+    "jaxtyping>=0.3.7",
 ]
 
 [project.scripts]
@@ -38,9 +39,13 @@ exclude = ["example/"]
 
 [tool.ruff.lint]
 select = ["I", "F"]  # import order, pyflakes (undefined / unused names)
+# jaxtyping dimension strings are not forward annotations: "n_candidate 2" is F722, and a single name is written
+# with a leading space (" n_candidate") so that it is F722 too instead of an undefined name (F821)
+ignore = ["F722"]
 
 [dependency-groups]
 dev = [
+    "beartype>=0.23.1",
     "pre-commit>=4.6.2",
     "pytest>=9.0.3",
     "ruff==0.15.12",

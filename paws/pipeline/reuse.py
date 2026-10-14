@@ -5,7 +5,9 @@ Only used to build a stage's seed plan; everything downstream reads the plan and
 """
 
 import numpy as np
+from jaxtyping import Shaped
 
+from paws.filepaths import PathManager
 from paws.pipeline.seed_plan import (
     SeedPlan,
     default_seed_plan,
@@ -13,9 +15,12 @@ from paws.pipeline.seed_plan import (
     seed_keys,
 )
 from paws.pipeline.seeds import selected_seed_rows
+from paws.settings import Settings, Stage
 
 
-def own_run_seeds(settings, paths, stage, freq):
+def own_run_seeds(
+    settings: Settings, paths: PathManager, stage: Stage, freq: int
+) -> dict[tuple[float, float, float], int]:
     """{seed key: first job} of the seeds `stage` ran itself in one band."""
     plan = load_seed_plan(settings, stage, freq)
     if plan is None:
@@ -30,7 +35,13 @@ def own_run_seeds(settings, paths, stage, freq):
     }
 
 
-def build_seed_plan(settings, paths, stage, freq, seed_rows):
+def build_seed_plan(
+    settings: Settings,
+    paths: PathManager,
+    stage: Stage,
+    freq: int,
+    seed_rows: Shaped[np.ndarray, " n_seed"],
+) -> SeedPlan:
     """Plan of one band: each seed from the first stage in stage.reuse that ran it, else a new run of this stage."""
     keys = seed_keys(seed_rows)
     source_stage = np.full(len(keys), stage.name, dtype=object)

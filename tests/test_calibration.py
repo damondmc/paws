@@ -10,7 +10,7 @@ def test_injection_excess_ratios_matched_by_injected_freq():
     # 2F - 4 = 40, 20
     now_rows = np.array([(44.0,), (24.0,)], dtype=[("mean2F", float)])
     ratios = calibration.injection_excess_ratios(
-        prev_rows, [50.1, 50.2], now_rows, [50.2, 50.1]
+        prev_rows, np.array([50.1, 50.2]), now_rows, np.array([50.2, 50.1])
     )
     assert list(ratios) == [2.0, 2.0]  # 40 / 20 and 20 / 10
 
@@ -37,5 +37,7 @@ def test_h1_l1_windows_hold_central_range():
 
 def test_threshold_band_index():
     assert list(
-        calibration.threshold_band_index(np.array([20, 100, 200]), [20, 99, 100, 199])
+        calibration.threshold_band_index(
+            np.array([20, 100, 200]), np.array([20, 99, 100, 199])
+        )
     ) == [0, 0, 1, 1]

@@ -6,33 +6,41 @@ results/<stage>/seed_plan.npz; a band missing there has the default plan.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 
 import numpy as np
+from jaxtyping import Float, Int, Shaped
+
+from paws.filepaths import PathManager
+from paws.settings import Settings, Stage
 
 SEED_KEY_COLUMNS = ("freq", "f1dot", "f2dot")
 
 
 @dataclass(frozen=True)
 class SeedPlan:
-    keys: np.ndarray  # (n_seeds, 3): freq, f1dot, f2dot of each seed
-    # (n_seeds,) stage name whose Weave run holds the seed's results
-    source_stage: np.ndarray
-    # (n_seeds,) first Weave job (result file index) of the seed in that run
-    first_job: np.ndarray
+    keys: Float[np.ndarray, "n_seed 3"]  # freq, f1dot, f2dot of each seed
+    # stage name whose Weave run holds the seed's results
+    source_stage: Shaped[np.ndarray, " n_seed"]
+    # first Weave job (result file index) of the seed in that run
+    first_job: Int[np.ndarray, " n_seed"]
 
-    def own_runs(self, stage_name):
+    def own_runs(self, stage_name: str) -> Int[np.ndarray, " n_own"]:
         """Indices of the seeds that run in stage_name itself."""
         return np.flatnonzero(self.source_stage == stage_name)
 
 
-def seed_keys(rows):
+def seed_keys(rows: Shaped[np.ndarray, " n_seed"]) -> Float[np.ndarray, "n_seed 3"]:
     return np.array(
         [[float(row[column]) for column in SEED_KEY_COLUMNS] for row in rows],
         dtype=float,
     ).reshape(-1, 3)
 
 
-def default_seed_plan(stage, seed_rows):
+def default_seed_plan(
+    stage: Stage, seed_rows: Shaped[np.ndarray, " n_seed"]
+) -> SeedPlan:
     n_seeds = len(seed_rows)
     return SeedPlan(
         seed_keys(seed_rows),
@@ -41,11 +49,11 @@ def default_seed_plan(stage, seed_rows):
     )
 
 
-def seed_plan_path(settings, stage):
+def seed_plan_path(settings: Settings, stage: Stage) -> Path:
     return settings.environment.home_dir / "results" / stage.name / "seed_plan.npz"
 
 
-def load_seed_plan(settings, stage, freq):
+def load_seed_plan(settings: Settings, stage: Stage, freq: int) -> Optional[SeedPlan]:
     """Saved plan of one band, or None when none was saved."""
     path = seed_plan_path(settings, stage)
     if not path.exists():
@@ -60,7 +68,9 @@ def load_seed_plan(settings, stage, freq):
         )
 
 
-def save_seed_plans(settings, stage, plan_by_band):
+def save_seed_plans(
+    settings: Settings, stage: Stage, plan_by_band: dict[int, SeedPlan]
+) -> None:
     """Adds or replaces the plans of these bands in the stage's seed_plan.npz."""
     path = seed_plan_path(settings, stage)
     arrays = dict(np.load(path)) if path.exists() else {}
@@ -72,7 +82,9 @@ def save_seed_plans(settings, stage, plan_by_band):
     np.savez(path, **arrays)
 
 
-def result_files_per_seed(paths, settings, stage, freq, plan):
+def result_files_per_seed(
+    paths: PathManager, settings: Settings, stage: Stage, freq: int, plan: SeedPlan
+) -> list[list[Path]]:
     """Weave result files (n_sky per seed) of each seed of a plan."""
     files_per_seed = []
     for source_name, first_job in zip(plan.source_stage, plan.first_job):

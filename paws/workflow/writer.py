@@ -1,23 +1,26 @@
+"""Condor submit (.sub) and DAG file writers."""
+
 from pathlib import Path
+from typing import Optional
 
 
 def write_search_subfile(
-    filename,
-    executable_path,
-    transfer_executable,
-    output_path,
-    error_path,
-    log_path,
-    arg_list_string,
-    accounting_group,
-    user,
-    request_memory="15GB",
-    request_disk="3GB",
-    request_cpu=1,
-    use_osg=False,
-    use_osdf=False,
-    image=None,
-):
+    filename: str,
+    executable_path: str,
+    transfer_executable: bool,
+    output_path: str,
+    error_path: str,
+    log_path: str,
+    arg_list_string: str,
+    accounting_group: str,
+    user: str,
+    request_memory: str = "15GB",
+    request_disk: str = "3GB",
+    request_cpu: int = 1,
+    use_osg: bool = False,
+    use_osdf: bool = False,
+    image: Optional[str] = None,
+) -> None:
     """
     Writes the Condor submission (.sub) file.
     """
@@ -84,10 +87,14 @@ def write_search_subfile(
 
         subfile.write("queue 1\n")
 
-    return 0
 
-
-def write_search_dagfile(file_name, job_name, sub_file_name, job_num, arg_list_string):
+def write_search_dagfile(
+    file_name: str,
+    job_name: str,
+    sub_file_name: str,
+    job_num: int,
+    arg_list_string: str,
+) -> None:
     """
     Appends a JOB entry to the Condor DAG file.
     """
@@ -98,4 +105,3 @@ def write_search_dagfile(file_name, job_name, sub_file_name, job_num, arg_list_s
             'VARS {0}_{1} JobID="{1}" {2}'.format(job_name, job_num, arg_list_string)
         )
         dagfile.write("\n")
-    return 0

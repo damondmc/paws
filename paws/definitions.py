@@ -1,18 +1,18 @@
-def phase_param_name(order):
-    """
-    Returns parameter names based on derivative order.
-    """
+"""Names of the phase parameters, the injection parameters and the tasks."""
+
+
+def phase_param_name(order: int) -> tuple[list[str], list[str]]:
+    """(frequency parameter names, their spacing names) up to spin-down order `order`."""
     freqParamName = ["freq", "f1dot", "f2dot", "f3dot", "f4dot"]
     freqDerivParamName = ["df", "df1dot", "df2dot", "df3dot", "df4dot"]
     return freqParamName[: order + 1], freqDerivParamName[: order + 1]
 
 
-def ext_param_name():
+def ext_param_name() -> list[str]:
+    """Injection parameters besides the phase parameters."""
     return ["Alpha", "Delta", "refTime", "aPlus", "aCross", "psi"]
 
 
-def task_name(target_name, stage, cohDay, order):
-    """
-    Standardized task naming convention.
-    """
+def task_name(target_name: str, stage: str, cohDay: int, order: int) -> str:
+    """Standardized task naming convention."""
     return f"{target_name}_{stage}_TCoh{cohDay}_O{order}"

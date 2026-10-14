@@ -1,19 +1,29 @@
+"""Injection parameter tables: random signals in the non-saturated sub-bands and the search ranges around them."""
+
+from typing import Optional
+
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
+from jaxtyping import Float, Shaped
 
 from paws.definitions import ext_param_name, phase_param_name
+from paws.params.models import PowerLawModel
 from paws.params.sky import sky_hex_offsets, sky_sampler
 
 
 class InjectionParamGenerator:
-    def __init__(self, model, ref_time, f0_band=0.1):
+    def __init__(
+        self, model: PowerLawModel, ref_time: float, f0_band: float = 0.1
+    ) -> None:
         self.model = model
         self.ref_time = ref_time
         self.f0_band = f0_band
         self.inj_col_names = ext_param_name()
 
-    def get_f0_from_non_sat_bands(self, non_sat_bands, n_inj):
+    def get_f0_from_non_sat_bands(
+        self, non_sat_bands: Float[np.ndarray, " n_subband"], n_inj: int
+    ) -> Float[np.ndarray, " n_injection"]:
         """Randomly draws f0 values from the available non-saturated bands."""
         if non_sat_bands is None or len(non_sat_bands) == 0:
             raise ValueError("No non-saturated bands provided for injection!")
@@ -27,8 +37,15 @@ class InjectionParamGenerator:
         return f0
 
     def generate_injection_table(
-        self, alpha, delta, non_sat_bands, h0, n_inj, inj_freq_deriv_order, sky_radius
-    ):
+        self,
+        alpha: float,
+        delta: float,
+        non_sat_bands: Float[np.ndarray, " n_subband"],
+        h0: float,
+        n_inj: int,
+        inj_freq_deriv_order: int,
+        sky_radius: float,
+    ) -> fits.BinTableHDU:
         """Generates the source injection parameters."""
         freq_params, _ = phase_param_name(inj_freq_deriv_order)
 
@@ -77,18 +94,18 @@ class InjectionParamGenerator:
 
     def generate_search_range_table(
         self,
-        alpha,
-        dalpha,
-        delta,
-        ddelta,
-        spacing,
-        inj_data,
-        freq_deriv_order,
-        n_spacing=1,
-        sky_radius=0,
-        spacing_alpha=None,
-        spacing_delta=None,
-    ):
+        alpha: float,
+        dalpha: float,
+        delta: float,
+        ddelta: float,
+        spacing: dict[str, float],
+        inj_data: Shaped[np.ndarray, " n_injection"],
+        freq_deriv_order: int,
+        n_spacing: float = 1.0,
+        sky_radius: float = 0.0,
+        spacing_alpha: Optional[float] = None,
+        spacing_delta: Optional[float] = None,
+    ) -> fits.BinTableHDU:
         """
         Generates the small search windows around the injections for Weave.
 
@@ -150,24 +167,25 @@ class InjectionParamGenerator:
 
     def generate_parameters(
         self,
-        alpha,
-        dalpha,
-        delta,
-        ddelta,
-        non_sat_bands,
-        spacing,
-        h0,
-        freq,
-        n_inj=1,
-        n_spacing=1,
-        freq_deriv_order=2,
-        inj_freq_deriv_order=4,
-        sky_radius=0,
-        spacing_alpha=None,
-        spacing_delta=None,
-    ):
+        alpha: float,
+        dalpha: float,
+        delta: float,
+        ddelta: float,
+        non_sat_bands: Float[np.ndarray, " n_subband"],
+        spacing: dict[str, float],
+        h0: float,
+        freq: int,
+        n_inj: int = 1,
+        n_spacing: float = 1.0,
+        freq_deriv_order: int = 2,
+        inj_freq_deriv_order: int = 4,
+        sky_radius: float = 0.0,
+        spacing_alpha: Optional[float] = None,
+        spacing_delta: Optional[float] = None,
+    ) -> tuple[dict[str, fits.BinTableHDU], dict[str, fits.BinTableHDU]]:
         """
-        High-level wrapper to generate both Injection Parameters and Search Ranges.
+        High-level wrapper to generate both Injection Parameters and Search Ranges: ({band: search ranges},
+        {band: injection parameters}) with the band as a string key.
 
         When sky_radius > 0 with spacings provided, each injection is searched at n_sky
         hex-grid sky points within the cap. Both returned dicts contain n_inj * n_sky rows

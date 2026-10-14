@@ -1,11 +1,16 @@
+"""Sky positions: random samples in a cap and hexagonal grids of offsets around a target."""
+
+from typing import Optional
+
 import numpy as np
+from jaxtyping import Float
 
 
-def sky_sampler(target_ra, target_dec, sky_radius, n_samples):
-    """
-    Samples sky locations uniformly within a circular cap of radius sky_radius
-    (radians) around (target_ra, target_dec).
-    """
+def sky_sampler(
+    target_ra: float, target_dec: float, sky_radius: float, n_samples: int
+) -> tuple[Float[np.ndarray, " n_sample"], Float[np.ndarray, " n_sample"]]:
+    """(alpha, delta) of n_samples sky locations uniform in a circular cap of radius sky_radius (radians) around
+    (target_ra, target_dec)."""
     z_min = np.cos(sky_radius)
     z = np.random.uniform(z_min, 1.0, n_samples)
     theta = np.arccos(z)
@@ -39,7 +44,7 @@ def sky_sampler(target_ra, target_dec, sky_radius, n_samples):
     return alpha, delta
 
 
-def hexagonal_grid(num_layers):
+def hexagonal_grid(num_layers: int) -> dict[int, list[tuple[int, int, float, float]]]:
     """
     Generates a hexagonal grid up to num_layers rings around the origin.
 
@@ -65,7 +70,9 @@ def hexagonal_grid(num_layers):
     return layer_points
 
 
-def sky_hex_offsets(sky_radius, spacing_alpha, spacing_delta):
+def sky_hex_offsets(
+    sky_radius: float, spacing_alpha: Optional[float], spacing_delta: Optional[float]
+) -> tuple[Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"]]:
     """
     Returns (d_alpha, d_delta) offset arrays for a hex grid truncated to sky_radius.
 

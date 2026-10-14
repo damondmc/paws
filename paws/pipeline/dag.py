@@ -1,6 +1,12 @@
 """Weave DAGs of a stage, one per 1 Hz band, and the DAG list to submit."""
 
+from collections.abc import Callable
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
 from astropy.io import fits
+from jaxtyping import Float, Shaped
 from tqdm import tqdm
 
 from paws.fits_io import outlier_file_spacing
@@ -10,13 +16,16 @@ from paws.pipeline import reuse
 from paws.pipeline.context import StageContext
 from paws.pipeline.seed_plan import default_seed_plan, save_seed_plans
 from paws.pipeline.seeds import read_seed_rows, seed_outlier_file, selected_seed_rows
+from paws.settings import Settings
 
 
-def dag_search(context, freq):
+def dag_search(context: StageContext, freq: int) -> Optional[Path]:
     return context.make_weave_dag(freq, context.search_params(freq))
 
 
-def non_saturated_search_file(context, freq):
+def non_saturated_search_file(
+    context: StageContext, freq: int
+) -> tuple[Optional[Path], Optional[Float[np.ndarray, " n_subband"]]]:
     """(previous search-stage outlier file, its non-saturated sub-bands), or (None, None) to skip the band."""
     if freq not in context.h0_by_freq():
         print(f"{freq} Hz: no h0, skipped")
@@ -32,7 +41,7 @@ def non_saturated_search_file(context, freq):
     return path, non_saturated_bands
 
 
-def dag_injection(context, freq):
+def dag_injection(context: StageContext, freq: int) -> Optional[Path]:
     """New injections in the non-saturated sub-bands of the initial search."""
     stage, target = context.stage, context.target
     search_file, non_saturated_bands = non_saturated_search_file(context, freq)
@@ -68,7 +77,10 @@ def dag_injection(context, freq):
     )
 
 
-def followup_params(context, freq, seed_rows):
+def followup_params(
+    context: StageContext, freq: int, seed_rows: Shaped[np.ndarray, " n_seed"]
+) -> fits.BinTableHDU:
+    """Search ranges around the seeds (sky offsets are added per job by the workflow manager)."""
     stage, target, prev_stage = context.stage, context.target, context.prev_stage
     seed_file = seed_outlier_file(context.settings, context.paths, stage, freq)
     return FollowUpParamGenerator(context.spindown_model(freq)).generate_parameter(
@@ -87,7 +99,7 @@ def followup_params(context, freq, seed_rows):
     )
 
 
-def dag_followup(context, freq):
+def dag_followup(context: StageContext, freq: int) -> Optional[Path]:
     """Real candidates: Weave jobs for the seeds of the band's seed plan that run in this stage."""
     stage = context.stage
     seed_rows = selected_seed_rows(context.settings, context.paths, stage, freq)
@@ -111,7 +123,7 @@ def dag_followup(context, freq):
     )
 
 
-def dag_injection_followup(context, freq):
+def dag_injection_followup(context: StageContext, freq: int) -> Optional[Path]:
     """The previous stage's injection outliers followed up with their injections."""
     stage = context.stage
     seed_rows, injection_rows = read_seed_rows(
@@ -129,7 +141,7 @@ def dag_injection_followup(context, freq):
     )
 
 
-def dag_upperlimit(context, freq):
+def dag_upperlimit(context: StageContext, freq: int) -> Optional[Path]:
     stage = context.stage
     search_file, non_saturated_bands = non_saturated_search_file(context, freq)
     if search_file is None:
@@ -167,7 +179,9 @@ def dag_upperlimit(context, freq):
     )
 
 
-def stage_dag_maker(context):
+def stage_dag_maker(
+    context: StageContext,
+) -> Callable[[StageContext, int], Optional[Path]]:
     """The DAG function of the stage, from its structure."""
     stage = context.stage
     if stage.is_search:
@@ -181,7 +195,7 @@ def stage_dag_maker(context):
     return dag_followup
 
 
-def dag_list_path(context, bands):
+def dag_list_path(context: StageContext, bands: Optional[list[int]]) -> Path:
     stage = context.stage
     band_tag = (
         "_".join(map(str, bands)) if bands else f"{stage.bands[0]}-{stage.bands[1]}"
@@ -193,7 +207,9 @@ def dag_list_path(context, bands):
     )
 
 
-def make_stage_dags(settings, stage_name, bands):
+def make_stage_dags(
+    settings: Settings, stage_name: str, bands: Optional[list[int]]
+) -> None:
     """DAGs of every band of the stage (or only `bands`; None: the stage's bands) and their DAG list."""
     context = StageContext(settings, stage_name)
     stage = context.stage

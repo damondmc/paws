@@ -1,15 +1,23 @@
+"""Weave runs of the upper-limit job: one process per injection, then the detection efficiency."""
+
 import subprocess
+from collections.abc import Iterable
 from multiprocessing import Pool
 from pathlib import Path
+from typing import Union
 
+import numpy as np
 from astropy.io import fits
+from jaxtyping import Shaped
 
 from paws.analysis.outlier import ResultAnalysisManager
 from paws.definitions import phase_param_name
 from paws.filepaths import PathManager, make_dir
+from paws.fits_io import TableRow
+from paws.settings import FixedSettings
 
 
-def delete_files(result_file_list):
+def delete_files(result_file_list: Iterable[Union[str, Path]]) -> None:
     """Delete files to release disk storage."""
     for f in result_file_list:
         Path(f).unlink(missing_ok=True)
@@ -17,18 +25,18 @@ def delete_files(result_file_list):
 
 
 def search_job(
-    settings,
-    freq_deriv_order,
-    n_seg,
-    num_toplist,
-    sft_files,
-    metric_file,
-    extra_stats,
-    weave_exe,
-    search_data,
-):
+    settings: FixedSettings,
+    freq_deriv_order: int,
+    n_seg: int,
+    num_toplist: int,
+    sft_files: str,
+    metric_file: str,
+    extra_stats: str,
+    weave_exe: str,
+    search_data: tuple[str, TableRow],
+) -> str:
     """
-    Worker function to run a single WEAVE search job (settings: paws.settings.FixedSettings).
+    Worker function to run a single WEAVE search job (search_data: (result file, parameter row)).
     """
     result_file, param_row = search_data
     make_dir([result_file])
@@ -68,19 +76,20 @@ def search_job(
 
 
 def injection_job(
-    settings,
-    freq_deriv_order,
-    n_seg,
-    num_toplist,
-    sft_files,
-    metric_file,
-    extra_stats,
-    weave_exe,
-    search_data,
-    injection_data,
-):
+    settings: FixedSettings,
+    freq_deriv_order: int,
+    n_seg: int,
+    num_toplist: int,
+    sft_files: str,
+    metric_file: str,
+    extra_stats: str,
+    weave_exe: str,
+    search_data: tuple[str, TableRow],
+    injection_data: TableRow,
+) -> str:
     """
-    Worker function to run a single WEAVE injection job (settings: paws.settings.FixedSettings).
+    Worker function to run a single WEAVE injection job (search_data: (result file, parameter row);
+    injection_data: the injection's row).
     """
     result_file, param_row = search_data
     make_dir([result_file])
@@ -133,28 +142,29 @@ def injection_job(
 
 
 def determine_efficiency(
-    taskname,
-    stage,
-    settings,
-    freq,
-    freq_deriv_order,
-    n_sky,
-    n_seg,
-    num_toplist,
-    sft_files,
-    metric_file,
-    extra_stats,
-    weave_exe,
-    search_data,
-    injection_data,
-    mean2f_th,
-    n_cpu,
-    cluster,
-    work_in_local_dir,
-    save_intermediate=False,
-):
+    taskname: str,
+    stage: str,
+    settings: FixedSettings,
+    freq: int,
+    freq_deriv_order: int,
+    n_sky: int,
+    n_seg: int,
+    num_toplist: int,
+    sft_files: str,
+    metric_file: str,
+    extra_stats: str,
+    weave_exe: str,
+    search_data: Shaped[np.ndarray, " n_job"],
+    injection_data: Shaped[np.ndarray, " n_job"],
+    mean2f_th: float,
+    n_cpu: int,
+    cluster: bool,
+    work_in_local_dir: bool,
+    save_intermediate: bool = False,
+) -> tuple[float, Union[str, Path]]:
     """
-    Runs injections in parallel and calculates detection efficiency (settings: paws.settings.FixedSettings).
+    Runs the injections in parallel (one Weave run per row of search_data / injection_data) and returns
+    (detection efficiency, outlier file).
     """
     paths = PathManager(settings)
     result_manager = ResultAnalysisManager(settings)

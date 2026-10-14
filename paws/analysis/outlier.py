@@ -1,19 +1,33 @@
+"""Outlier collection: the loudest candidates of Weave result files, clustered, as outlier FITS files."""
+
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
+from typing import Optional, Union
 
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table, vstack
+from jaxtyping import Bool, Float, Int, Shaped
 from tqdm import tqdm
 
 from paws.definitions import phase_param_name
 from paws.filepaths import PathManager, make_dir
 from paws.fits_io import weave_header_spacing, weave_template_spacing
+from paws.settings import FixedSettings
 
 from .clustering import clustering
 
+# one Weave result file to read: (index, job index, path, mean2F threshold, num_toplist, freq_deriv_order,
+# read injections)
+Job = tuple[int, int, Union[str, Path], float, int, int, bool]
+# what was read: (index, job index, outlier table, injection table, template spacings, is saturated); the tables
+# and spacings are None when the file is missing
+JobResult = tuple[
+    int, int, Optional[Table], Optional[Table], Optional[dict[str, float]], int
+]
 
-def read_loudest_row(weave_result_path):
+
+def read_loudest_row(weave_result_path: Path) -> Shaped[np.ndarray, "1"]:
     """First row of a Weave toplist (toplists are sorted by mean2F)."""
     with fits.open(weave_result_path, memmap=True) as hdul:
         toplist = hdul[1].data
@@ -22,7 +36,9 @@ def read_loudest_row(weave_result_path):
         return np.array(toplist[:1])
 
 
-def loudest_rows(result_files_per_seed, n_threads):
+def loudest_rows(
+    result_files_per_seed: list[list[Path]], n_threads: int
+) -> Shaped[np.ndarray, " n_seed"]:
     """Loudest candidate of each seed over its Weave result files (one equal-length file list per seed).
     Reads only row 0 of each file, which gives the same result as make_outlier(num_toplist=1)."""
     n_seeds = len(result_files_per_seed)
@@ -34,7 +50,9 @@ def loudest_rows(result_files_per_seed, n_threads):
     return rows[np.arange(n_seeds), rows["mean2F"].argmax(axis=1)]
 
 
-def make_outlier_table(data, mean2f_th, num_toplist):
+def make_outlier_table(
+    data: Shaped[np.ndarray, " n_row"], mean2f_th: float, num_toplist: int
+) -> Table:
     """The first num_toplist candidates of a toplist with mean2F >= mean2f_th, plus a "mean2F threshold" column."""
     data = data[:num_toplist]
     mask = data["mean2F"] >= mean2f_th
@@ -43,7 +61,9 @@ def make_outlier_table(data, mean2f_th, num_toplist):
     return data
 
 
-def make_injection_table(inj_param, search_param):
+def make_injection_table(
+    inj_param: Shaped[np.ndarray, " n_row"], search_param: Table
+) -> tuple[Table, Table]:
     """(loudest search candidate, injection parameters with h0 added) of one Weave run with an injection."""
     inj_param = Table(inj_param)
     aplus, across = inj_param["aPlus"], inj_param["aCross"]
@@ -55,10 +75,8 @@ def make_injection_table(inj_param, search_param):
     return search_param, inj_param
 
 
-def read_job_outliers(job):
-    """Outliers of one Weave result file. job: (index, job index, path, mean2F threshold, num_toplist,
-    freq_deriv_order, read injections). Returns (index, job index, outlier table, injection table, spacing,
-    is saturated); the tables and spacing are None when the file is missing."""
+def read_job_outliers(job: Job) -> JobResult:
+    """Outliers of one Weave result file (see Job and JobResult)."""
     i, job_idx, file_path, th, num_toplist, freq_deriv_order, read_inj = job
     try:
         # one open per file: toplist, header spacing and injections
@@ -74,13 +92,15 @@ def read_job_outliers(job):
         return (i, job_idx, None, None, None, 0)
 
 
-def read_jobs_with_threads(jobs, n_threads):
+def read_jobs_with_threads(jobs: list[Job], n_threads: int) -> list[JobResult]:
     """read_job_outliers of each job, in job order."""
     with ThreadPoolExecutor(max_workers=n_threads) as executor:
         return list(executor.map(read_job_outliers, jobs))
 
 
-def read_jobs(jobs, n_processes, n_threads, desc):
+def read_jobs(
+    jobs: list[Job], n_processes: int, n_threads: int, desc: str
+) -> list[JobResult]:
     """read_job_outliers of each job, in job order, over n_processes processes of n_threads threads each."""
     if n_processes == 1:
         with ThreadPoolExecutor(max_workers=n_threads) as executor:
@@ -116,29 +136,38 @@ class ResultAnalysisManager:
     Manages the collection, filtering, and storage of search results.
     """
 
-    def __init__(self, settings):
+    def __init__(self, settings: FixedSettings) -> None:
         """settings: paws.settings.FixedSettings (or Settings)."""
         self.settings = settings
         self.paths = PathManager(settings)
 
     def _collect_outlier_data(
         self,
-        taskname,
-        freq,
-        stage,
-        job_indices,
-        mean2f_th,
-        num_toplist,
-        freq_deriv_order,
-        n_sky=1,
-        work_in_local_dir=False,
-        n_processes=1,
-        max_workers=32,
-        read_inj=False,
-        separate_saturated=False,
-        desc="Processing",
-    ):
-        """Central engine for parallel FITS reading and outlier filtering."""
+        taskname: str,
+        freq: int,
+        stage: str,
+        job_indices: list[int],
+        mean2f_th: Union[float, Float[np.ndarray, " n_seed"]],
+        num_toplist: int,
+        freq_deriv_order: int,
+        n_sky: int = 1,
+        work_in_local_dir: bool = False,
+        n_processes: int = 1,
+        max_workers: int = 32,
+        read_inj: bool = False,
+        separate_saturated: bool = False,
+        desc: str = "Processing",
+    ) -> tuple[
+        list[Table],
+        list[Table],
+        list[Table],
+        list[tuple[int, int, int, int]],
+        dict[str, float],
+    ]:
+        """Central engine for parallel FITS reading and outlier filtering.
+
+        Returns (outlier tables, saturated outlier tables, injection tables, INFO rows (freq, first job index,
+        number of outliers, is saturated), largest template spacings)."""
         # 1. Handle scalar vs array thresholds
         if np.isscalar(mean2f_th):
             thresholds = [mean2f_th] * len(job_indices)
@@ -232,16 +261,16 @@ class ResultAnalysisManager:
 
     def _write_clustered_results(
         self,
-        freq,
-        taskname,
-        stage,
-        outlier_data,
-        freq_deriv_order,
-        primary_hdu,
-        inj_hdu=None,
-        non_sat_hdu=None,
-        work_in_local_dir=False,
-    ):
+        freq: int,
+        taskname: str,
+        stage: str,
+        outlier_data: Optional[Shaped[np.ndarray, " n_outlier"]],
+        freq_deriv_order: int,
+        primary_hdu: fits.PrimaryHDU,
+        inj_hdu: Optional[fits.BinTableHDU] = None,
+        non_sat_hdu: Optional[fits.BinTableHDU] = None,
+        work_in_local_dir: bool = False,
+    ) -> Union[str, Path]:
         """Central engine for clustering outliers and writing the clustered FITS file."""
 
         cluster_hdul = fits.HDUList()
@@ -322,25 +351,26 @@ class ResultAnalysisManager:
 
     def make_outlier(
         self,
-        taskname,
-        freq,
-        mean2f_th,
-        n_jobs,
-        n_processes,
-        num_toplist=1000,
-        stage="search",
-        freq_deriv_order=2,
-        n_sky=1,
-        cluster=False,
-        work_in_local_dir=False,
-        separate_saturated=False,
-        is_injection=False,
-        max_workers=32,
-        param_indices=None,
-    ):
+        taskname: str,
+        freq: int,
+        mean2f_th: Union[float, Float[np.ndarray, " n_seed"]],
+        n_jobs: int,
+        n_processes: int,
+        num_toplist: int = 1000,
+        stage: str = "search",
+        freq_deriv_order: int = 2,
+        n_sky: int = 1,
+        cluster: bool = False,
+        work_in_local_dir: bool = False,
+        separate_saturated: bool = False,
+        is_injection: bool = False,
+        max_workers: int = 32,
+        param_indices: Optional[Int[np.ndarray, " n_selected"]] = None,
+    ) -> Union[str, Path]:
         """
         Unified engine to collect results and write FITS files for Search, Injection, or Follow-up.
 
+        mean2f_th: one threshold for every job, or one per parameter point (seed).
         n_processes: processes reading the result files, each with max_workers threads.
         param_indices: optional 0-based indices of the parameter points to
         analyse (None = all n_jobs points). Each point owns n_sky consecutive
@@ -499,18 +529,18 @@ class ResultAnalysisManager:
 
     def write_loudest_outliers(
         self,
-        taskname,
-        freq,
-        stage,
-        freq_deriv_order,
-        n_seeds,
-        loudest_per_seed,
-        passed,
-        mean2f_threshold,
-        history,
-        history_stages,
-        spacing_files,
-    ):
+        taskname: str,
+        freq: int,
+        stage: str,
+        freq_deriv_order: int,
+        n_seeds: int,
+        loudest_per_seed: Shaped[np.ndarray, " n_seed"],
+        passed: Bool[np.ndarray, " n_seed"],
+        mean2f_threshold: Float[np.ndarray, " n_seed"],
+        history: dict[str, Float[np.ndarray, "n_seed ..."]],
+        history_stages: dict[str, str],
+        spacing_files: list[Path],
+    ) -> Union[str, Path]:
         """
         Unclustered and clustered outlier files of a stage collected as the loudest candidate per seed
         (see loudest_rows); INFO has one row per seed.

@@ -1,38 +1,44 @@
+"""Follow-up parameter tables: the search range around each seed, tiled over the sky grid."""
+
+from typing import Optional
+
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
+from jaxtyping import Shaped
 
 from paws.definitions import phase_param_name
+from paws.params.models import PowerLawModel
 from paws.params.sky import sky_hex_offsets
 
 
 class FollowUpParamGenerator:
-    def __init__(self, model):
+    def __init__(self, model: PowerLawModel) -> None:
         """
         Initialize the FollowUpParams generator.
 
         Parameters:
-        - model (object): Instance of PowerLawModel or UniformModel (REQUIRED).
+        - model (object): Instance of PowerLawModel (REQUIRED).
         """
         self.model = model
 
         # Initialize attributes that are set later via generate_parameters
-        self.alpha = None
-        self.dalpha = None
-        self.delta = None
-        self.ddelta = None
+        self.alpha: Optional[float] = None
+        self.dalpha: Optional[float] = None
+        self.delta: Optional[float] = None
+        self.ddelta: Optional[float] = None
 
     def generate_parameter_table(
         self,
-        data,
-        old_freq_deriv_order,
-        new_freq_deriv_order,
-        spacing,
-        n_spacing,
-        sky_radius=0,
-        spacing_alpha=None,
-        spacing_delta=None,
-    ):
+        data: Shaped[np.ndarray, " n_seed"],
+        old_freq_deriv_order: int,
+        new_freq_deriv_order: int,
+        spacing: dict[str, float],
+        n_spacing: float,
+        sky_radius: float = 0.0,
+        spacing_alpha: Optional[float] = None,
+        spacing_delta: Optional[float] = None,
+    ) -> fits.BinTableHDU:
         """
         Constructs the follow-up parameter table by expanding ranges.
 
@@ -40,8 +46,8 @@ class FollowUpParamGenerator:
         - data (numpy.array): Input outlier data.
         - old_freq_deriv_order (int): The derivative order of the previous search.
         - new_freq_deriv_order (int): The derivative order for the new search.
-        - spacing (float): The spacing between parameter values.
-        - n_spacing (int): The spacing multiplier for expanding ranges.
+        - spacing (dict): The template spacings (df, df1dot, ...) of the previous search.
+        - n_spacing (float): The spacing multiplier for expanding ranges.
 
         Returns:
         - fits.BinTableHDU: The constructed follow-up parameter table.
@@ -121,19 +127,19 @@ class FollowUpParamGenerator:
 
     def generate_parameter(
         self,
-        alpha,
-        dalpha,
-        delta,
-        ddelta,
-        data,
-        old_freq_deriv_order,
-        new_freq_deriv_order,
-        spacing,
-        n_spacing=1,
-        sky_radius=0,
-        spacing_alpha=None,
-        spacing_delta=None,
-    ):
+        alpha: float,
+        dalpha: float,
+        delta: float,
+        ddelta: float,
+        data: Shaped[np.ndarray, " n_seed"],
+        old_freq_deriv_order: int,
+        new_freq_deriv_order: int,
+        spacing: dict[str, float],
+        n_spacing: float = 1.0,
+        sky_radius: float = 0.0,
+        spacing_alpha: Optional[float] = None,
+        spacing_delta: Optional[float] = None,
+    ) -> fits.BinTableHDU:
         """
         Main entry point to generate parameters.
         """

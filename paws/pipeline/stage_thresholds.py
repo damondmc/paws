@@ -2,45 +2,52 @@
 threshold band (StageThresholds), and their calibration from injection stages (`paws thresholds <name>`)."""
 
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cache
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union
 
 import numpy as np
 import yaml
+from jaxtyping import Float, Int, Shaped
 
 from paws.analysis import calibration, statistics
 from paws.filepaths import PathManager
 from paws.fits_io import read_injection_outliers
 from paws.pipeline.noise_weights import log10_noise_ratio
-from paws.settings import ThresholdBand, ThresholdFile
+from paws.settings import Settings, Stage, ThresholdBand, ThresholdFile
+
+# {1 Hz band: (outlier rows, injected Freq)} of an injection stage
+OutliersByBand = dict[
+    int, tuple[Shaped[np.ndarray, " n_injection"], Float[np.ndarray, " n_injection"]]
+]
 
 
 @dataclass(frozen=True)
 class StageThresholds:
     """Thresholds of one follow-up stage, one value per threshold band."""
 
-    band_edges: np.ndarray
-    excess_ratio: np.ndarray  # (n_bands,) excess ratio threshold
-    # (n_bands,) lowest injection excess ratio, for the record; None in a hand-written file
-    excess_ratio_lowest: Optional[np.ndarray]
-    # (n_bands, 2) H1/L1 excess-ratio window of the stage's candidates, in log10 r_HL or (with h1_l1_noise_weights)
+    band_edges: Int[np.ndarray, " n_edge"]  # threshold band edges [Hz]
+    excess_ratio: Float[np.ndarray, " n_threshold_band"]
+    # lowest injection excess ratio, for the record; None in a hand-written file
+    excess_ratio_lowest: Optional[Float[np.ndarray, " n_threshold_band"]]
+    # (low, high) H1/L1 excess-ratio window of the stage's candidates, in log10 r_HL or (with h1_l1_noise_weights)
     # log10 R_HL; None: no window
-    h1_l1_window: Optional[np.ndarray]
-    # (n_bands, 2) window of the seeds, applied when they come from the initial search
-    seed_h1_l1_window: Optional[np.ndarray]
-    # (n_bands,) growth threshold on (2F - 4) / (2F_search - 4); None: no growth cut
-    growth: Optional[np.ndarray]
-    h1_l1_noise_weights: Optional[
-        str
-    ]  # noise-weights file of the windows; None: windows on r_HL
+    h1_l1_window: Optional[Float[np.ndarray, "n_threshold_band 2"]]
+    # (low, high) window of the seeds, applied when they come from the initial search
+    seed_h1_l1_window: Optional[Float[np.ndarray, "n_threshold_band 2"]]
+    # growth threshold on (2F - 4) / (2F_search - 4); None: no growth cut
+    growth: Optional[Float[np.ndarray, " n_threshold_band"]]
+    # noise-weights file of the windows; None: windows on r_HL
+    h1_l1_noise_weights: Optional[str]
 
     @classmethod
-    def from_file(cls, file):
+    def from_file(cls, file: ThresholdFile) -> "StageThresholds":
         """The arrays of a ThresholdFile."""
         bands = file.bands
 
-        def column(name):
+        def column(name: str) -> Optional[Float[np.ndarray, "n_threshold_band ..."]]:
             if getattr(bands[0], name) is None:
                 return None
             return np.array([getattr(band, name) for band in bands], dtype=float)
@@ -55,21 +62,28 @@ class StageThresholds:
             h1_l1_noise_weights=file.h1_l1_noise_weights,
         )
 
-    def at(self, name, freq):
-        """Threshold `name` (a field above) of the threshold band of each frequency."""
-        return getattr(self, name)[
-            calibration.threshold_band_index(self.band_edges, freq)
+    def at(
+        self, name: str, freq: Union[int, Int[np.ndarray, " n_candidate"]]
+    ) -> Union[float, Float[np.ndarray, "..."]]:
+        """Threshold `name` (a field above) of the threshold band of a frequency: one value (or one window) for an
+        int freq, one per frequency for an array."""
+        values = getattr(self, name)[
+            calibration.threshold_band_index(self.band_edges, np.atleast_1d(freq))
         ]
+        return values if np.ndim(freq) else values[0]
 
 
 # ------------------------------------------------------------- calibration
 
 
-def round_as_recorded(values):
+def round_as_recorded(values: Float[np.ndarray, "..."]) -> Float[np.ndarray, "..."]:
+    """The values rounded to 4 decimals, as written to a threshold file."""
     return np.vectorize(lambda value: float(f"{value:.4f}"))(values)
 
 
-def injection_outliers_by_band(settings, stage_name, freqs):
+def injection_outliers_by_band(
+    settings: Settings, stage_name: str, freqs: Iterable[int]
+) -> OutliersByBand:
     """{band: (outlier rows, injected Freq)} of the bands of an injection stage that have outliers."""
     paths = PathManager(settings)
     stage = settings.stage(stage_name)
@@ -90,8 +104,11 @@ def injection_outliers_by_band(settings, stage_name, freqs):
 
 
 def excess_ratio_thresholds_from_injections(
-    prev_outliers, now_outliers, band_edges, percentile
-):
+    prev_outliers: OutliersByBand,
+    now_outliers: OutliersByBand,
+    band_edges: Int[np.ndarray, " n_edge"],
+    percentile: float,
+) -> Float[np.ndarray, "n_threshold_band 2"]:
     """(percentile, lowest) of the (2F-4) ratios of the injections, matched between two injection stages."""
     band_of_injection, ratios = [], []
     for band, (now_rows, now_injected_freqs) in now_outliers.items():
@@ -110,8 +127,12 @@ def excess_ratio_thresholds_from_injections(
 
 
 def h1_l1_windows_from_injections(
-    settings, noise_weights_file, outliers_by_band, band_edges, percentile
-):
+    settings: Settings,
+    noise_weights_file: Optional[str],
+    outliers_by_band: OutliersByBand,
+    band_edges: Int[np.ndarray, " n_edge"],
+    percentile: float,
+) -> Float[np.ndarray, "n_threshold_band 2"]:
     """H1/L1 excess-ratio window holding the central (100 - percentile)% of the injections of one injection
     stage (normalized with the noise-weights file, when given)."""
     band_of_injection = np.concatenate(
@@ -133,7 +154,7 @@ def h1_l1_windows_from_injections(
     )
 
 
-def calibrate(settings, name):
+def calibrate(settings: Settings, name: str) -> ThresholdFile:
     """The ThresholdFile of calibration `name` (followup.yaml), computed from its injection stages' outliers; the
     values are rounded to 4 decimals, as written."""
     try:
@@ -141,7 +162,7 @@ def calibrate(settings, name):
     except KeyError:
         raise KeyError(f"calibration {name!r} is not in followup.yaml") from None
     band_edges = np.array(setting.bands)
-    freqs = range(band_edges[0], band_edges[-1])
+    freqs = range(int(band_edges[0]), int(band_edges[-1]))
     prev_injection, now_injection = setting.injections
     prev_outliers = injection_outliers_by_band(settings, prev_injection, freqs)
     now_outliers = injection_outliers_by_band(settings, now_injection, freqs)
@@ -183,7 +204,9 @@ def calibrate(settings, name):
         )[:, 0]
         growth_tcoh = settings.stage(setting.growth_search_injection).tcoh
 
-    def window(windows, i):
+    def window(
+        windows: Optional[Float[np.ndarray, "n_threshold_band 2"]], i: int
+    ) -> Optional[tuple[float, float]]:
         return None if windows is None else (float(windows[i, 0]), float(windows[i, 1]))
 
     return ThresholdFile(
@@ -207,7 +230,7 @@ def calibrate(settings, name):
     )
 
 
-def write_threshold_file(settings, name):
+def write_threshold_file(settings: Settings, name: str) -> None:
     """Calibrates `name` and writes thresholds/<name>.yaml in the config directory."""
     file = calibrate(settings, name)
     path = settings.threshold_file_path(name)
@@ -229,7 +252,7 @@ def write_threshold_file(settings, name):
 
 
 @cache
-def _stage_thresholds(settings, stage_name):
+def _stage_thresholds(settings: Settings, stage_name: str) -> StageThresholds:
     stage = settings.stage(stage_name)
     if stage.thresholds is None:
         raise ValueError(f"{stage_name} has no thresholds in followup.yaml")
@@ -260,17 +283,17 @@ def _stage_thresholds(settings, stage_name):
     return StageThresholds.from_file(file)
 
 
-def stage_thresholds(settings, stage):
+def stage_thresholds(settings: Settings, stage: Stage) -> StageThresholds:
     """Thresholds of a follow-up stage, read once per process from its threshold file and checked against the
     stage's chain."""
     return _stage_thresholds(settings, stage.name)
 
 
-def threshold_record_path(settings, stage_name):
+def threshold_record_path(settings: Settings, stage_name: str) -> Path:
     return settings.environment.home_dir / "results" / stage_name / "thresholds.yaml"
 
 
-def record_threshold_file(settings, stage):
+def record_threshold_file(settings: Settings, stage: Stage) -> None:
     """Copies the stage's threshold file to results/<stage>/thresholds.yaml, as applied."""
     path = threshold_record_path(settings, stage.name)
     path.parent.mkdir(parents=True, exist_ok=True)

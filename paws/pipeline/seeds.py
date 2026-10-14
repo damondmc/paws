@@ -3,13 +3,23 @@ follow-up); seeds from the initial search are kept only inside the stage's seed 
 threshold file has one.
 """
 
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
+from jaxtyping import Shaped
+
 from paws.analysis.statistics import inside_h1_l1_window
+from paws.filepaths import PathManager
 from paws.fits_io import read_fits_table
 from paws.pipeline.noise_weights import log10_noise_ratio
 from paws.pipeline.stage_thresholds import stage_thresholds
+from paws.settings import Settings, Stage
 
 
-def seed_outlier_file(settings, paths, stage, freq):
+def seed_outlier_file(
+    settings: Settings, paths: PathManager, stage: Stage, freq: int
+) -> Path:
     """Previous-stage outlier file holding the seeds of `stage`."""
     prev_stage = settings.prev(stage)
     prev_taskname = prev_stage.taskname(settings.target, freq)
@@ -22,8 +32,12 @@ def seed_outlier_file(settings, paths, stage, freq):
     )
 
 
-def read_seed_rows(settings, paths, stage, freq):
-    """(seed rows, injection rows or None) of a follow-up stage; (None, None) when the band has no seeds."""
+def read_seed_rows(
+    settings: Settings, paths: PathManager, stage: Stage, freq: int
+) -> tuple[
+    Optional[Shaped[np.ndarray, " n_seed"]], Optional[Shaped[np.ndarray, " n_seed"]]
+]:
+    """(seed rows, their injection rows or None) of a follow-up stage; (None, None) when the band has no seeds."""
     path = seed_outlier_file(settings, paths, stage, freq)
     if not path.is_file():
         return None, None
@@ -41,7 +55,9 @@ def read_seed_rows(settings, paths, stage, freq):
     return seed_rows, injection_rows
 
 
-def selected_seed_rows(settings, paths, stage, freq):
+def selected_seed_rows(
+    settings: Settings, paths: PathManager, stage: Stage, freq: int
+) -> Optional[Shaped[np.ndarray, " n_seed"]]:
     """Seed rows of a follow-up stage in one band: the previous stage's outliers; seeds from the initial search are
     kept only inside the stage's seed H1/L1 excess-ratio window (when it has one). None when the band has no seeds."""
     seed_rows, _ = read_seed_rows(settings, paths, stage, freq)

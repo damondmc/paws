@@ -1,3 +1,8 @@
+from jaxtyping import install_import_hook
+
+# every paws function checks its argument and return types, array dtypes and shapes (tests/typecheck.py)
+install_import_hook("paws", "typecheck.checker")
+
 import shutil
 from pathlib import Path
 

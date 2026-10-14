@@ -1,14 +1,23 @@
+"""HTCondor DAG and submit files of the Weave, upper-limit and outlier-collection jobs."""
+
 import sys
 import time
 from pathlib import Path
+from typing import Optional, Union
 
 import numpy as np
+from jaxtyping import Float, Shaped
 from tqdm import tqdm
 
 from paws.definitions import ext_param_name, phase_param_name
 from paws.filepaths import PathManager, make_dir
+from paws.fits_io import TableRow
+from paws.settings import FixedSettings
 
 from .writer import write_search_dagfile, write_search_subfile
+
+# the Weave runs of one Condor node: parameter rows, or (parameter row, injection row) pairs
+Chunk = Union[Shaped[np.ndarray, " n_task"], list[tuple[TableRow, TableRow]]]
 
 # DAGMan PRE script that deletes the OSDF outputs a node left behind before it is
 # (re)submitted. A broken output upload leaves truncated objects on the origin, the
@@ -60,21 +69,21 @@ class WorkflowManager:
     analysis stages (Search, Follow-up, Upper Limit).
     """
 
-    def __init__(self, settings):
+    def __init__(self, settings: FixedSettings) -> None:
         """settings: paws.settings.FixedSettings (or Settings)."""
         self.settings = settings
         self.paths = PathManager(settings)
 
         # Internal state for search parameter names
-        self.freq_param_names = []
-        self.freq_deriv_param_names = []
-        self.num_top_list = 0
+        self.freq_param_names: list[str] = []
+        self.freq_deriv_param_names: list[str] = []
+        self.num_top_list: int = 0
 
     # =========================================================================
     #  SECTION 1: SEARCH & FOLLOW-UP STAGE
     # =========================================================================
 
-    def _get_execution_kwargs(self, n_seg):
+    def _get_execution_kwargs(self, n_seg: int) -> dict[str, Union[str, float, int]]:
         """Helper to generate common keyword arguments for the search executable."""
         extra_stats = "coh2F_det,mean2F,coh2F_det,mean2F_det"
         kwargs = {
@@ -88,11 +97,11 @@ class WorkflowManager:
 
         return kwargs
 
-    def _format_injection_str(self, colnames, inj_param):
+    def _format_injection_str(self, colnames: list[str], inj_param: TableRow) -> str:
         """Formats injection parameters into a semicolon-separated string."""
         return ";".join([f"{col}={inj_param[col]}" for col in colnames])
 
-    def _create_wrapper_script(self, stage):
+    def _create_wrapper_script(self, stage: str) -> Path:
         """Creates a bash script that runs multiple Weave commands sequentially."""
         wrapper_path = (
             self.paths.dag_file(0, "wrapper", stage).parent
@@ -114,7 +123,7 @@ class WorkflowManager:
 
         return wrapper_path
 
-    def make_osdf_cleanup_dag(self, stage, n_retry=3):
+    def make_osdf_cleanup_dag(self, stage: str, n_retry: int = 3) -> Path:
         """
         Writes the stage's OSDF cleanup PRE script and a node-less DAG holding
         SCRIPT PRE ALL_NODES + RETRY ALL_NODES, and returns that DAG's path.
@@ -145,20 +154,20 @@ class WorkflowManager:
 
     def _search_batch_args(
         self,
-        freq,
-        stage,
-        chunk,
-        taskname,
-        n_seg,
-        sft_files,
-        node_index,
-        use_osg,
-        metric_file,
-        exe,
-        wrapper_path,
-        tasks_per_job,
-        inj_colnames=None,
-    ):
+        freq: int,
+        stage: str,
+        chunk: Chunk,
+        taskname: str,
+        n_seg: int,
+        sft_files: list[str],
+        node_index: int,
+        use_osg: bool,
+        metric_file: str,
+        exe: str,
+        wrapper_path: Path,
+        tasks_per_job: int,
+        inj_colnames: Optional[list[str]] = None,
+    ) -> str:
         """Generates task files and DAG VARS for a chunk of grouped jobs."""
 
         # 1. Create a task file for this specific Condor node (saved in the DAG directory)
@@ -249,29 +258,34 @@ class WorkflowManager:
 
     def make_search_dag(
         self,
-        taskname,
-        freq,
-        params,
-        num_top_list,
-        stage,
-        freq_deriv_order,
-        n_seg,
-        sft_files,
-        metric_file,
-        request_memory="18GB",
-        request_disk="5GB",
-        request_cpu=1,
-        use_osg=False,
-        use_osdf=False,
-        exe=None,
-        image=None,
-        inj_params=None,
-        inj_freq_deriv_order=None,
-        tasks_per_job=10,
-        sky_offsets=None,
-    ):
+        taskname: str,
+        freq: int,
+        params: Shaped[np.ndarray, " n_param"],
+        num_top_list: int,
+        stage: str,
+        freq_deriv_order: int,
+        n_seg: int,
+        sft_files: list[str],
+        metric_file: str,
+        request_memory: str = "18GB",
+        request_disk: str = "5GB",
+        request_cpu: int = 1,
+        use_osg: bool = False,
+        use_osdf: bool = False,
+        exe: Optional[str] = None,
+        image: Optional[str] = None,
+        inj_params: Optional[Shaped[np.ndarray, " n_param"]] = None,
+        inj_freq_deriv_order: Optional[int] = None,
+        tasks_per_job: int = 10,
+        sky_offsets: Optional[
+            tuple[Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"]]
+        ] = None,
+    ) -> Path:
         """
         Creates the DAG and SUB files for the Search/Follow-up stage using grouped batching.
+
+        params: one parameter row per seed (or search cell); with sky_offsets each row becomes n_sky Weave runs.
+        inj_params: the injection of each row (injection stages).
         """
         if not use_osg:
             print(
@@ -403,31 +417,31 @@ class WorkflowManager:
 
     def _ul_args(
         self,
-        environment_file,
-        data_file,
-        search_file,
-        taskname,
-        freq,
-        stage,
-        freq_deriv_order,
-        df_grid,
-        inj_freq_deriv_order,
-        sft_files_local,
-        metric_file_local,
-        n_inj,
-        num_toplist,
-        h0_est,
-        mean2f_th,
-        non_sat_bands,
-        sky_radius,
-        spacing_alpha,
-        spacing_delta,
-        n_spacing,
-        cluster,
-        work_in_local_dir,
-        save_intermediate,
-        request_cpu,
-    ):
+        environment_file: str,
+        data_file: str,
+        search_file: str,
+        taskname: str,
+        freq: int,
+        stage: str,
+        freq_deriv_order: int,
+        df_grid: list[float],
+        inj_freq_deriv_order: int,
+        sft_files_local: str,
+        metric_file_local: str,
+        n_inj: int,
+        num_toplist: int,
+        h0_est: float,
+        mean2f_th: float,
+        non_sat_bands: Float[np.ndarray, " n_subband"],
+        sky_radius: float,
+        spacing_alpha: Optional[float],
+        spacing_delta: Optional[float],
+        n_spacing: float,
+        cluster: bool,
+        work_in_local_dir: bool,
+        save_intermediate: bool,
+        request_cpu: int,
+    ) -> str:
         """Generates command line arguments for the python upper limit script."""
 
         bands_str = " ".join(map(str, non_sat_bands))
@@ -459,16 +473,16 @@ class WorkflowManager:
 
     def _ul_transfer_args(
         self,
-        config_files,
-        taskname,
-        freq,
-        metric_file,
-        stage,
-        sft_files,
-        cluster,
-        exe,
-        image,
-    ):
+        config_files: tuple[str, str, str],
+        taskname: str,
+        freq: int,
+        metric_file: str,
+        stage: str,
+        sft_files: list[str],
+        cluster: bool,
+        exe: Optional[str],
+        image: Optional[str],
+    ) -> str:
         """Generates VARS for OSG file transfers for Upper Limits (config_files: the job's settings files)."""
 
         input_files_list = ([str(exe)] if exe else []) + [
@@ -493,35 +507,35 @@ class WorkflowManager:
 
     def make_upperlimit_dag(
         self,
-        environment_file,
-        data_file,
-        search_file,
-        taskname,
-        freq,
-        stage,
-        freq_deriv_order,
-        sft_files,
-        metric_file,
-        mean2f_th,
-        non_sat_bands,
-        exe,
-        n_spacing,
-        df_grid=[1e-6, 1e-13, 1e-20],
-        inj_freq_deriv_order=4,
-        num_toplist=1,
-        sky_radius=1e-5,
-        spacing_alpha=None,
-        spacing_delta=None,
-        h0_est=6e-26,
-        n_inj=64,
-        request_memory="4GB",
-        request_disk="4GB",
-        request_cpu=32,
-        cluster=False,
-        work_in_local_dir=False,
-        save_intermediate=False,
-        image=None,
-    ):
+        environment_file: str,
+        data_file: str,
+        search_file: str,
+        taskname: str,
+        freq: int,
+        stage: str,
+        freq_deriv_order: int,
+        sft_files: list[str],
+        metric_file: str,
+        mean2f_th: float,
+        non_sat_bands: Float[np.ndarray, " n_subband"],
+        exe: Optional[str],
+        n_spacing: float,
+        df_grid: list[float] = [1e-6, 1e-13, 1e-20],
+        inj_freq_deriv_order: int = 4,
+        num_toplist: int = 1,
+        sky_radius: float = 1e-5,
+        spacing_alpha: Optional[float] = None,
+        spacing_delta: Optional[float] = None,
+        h0_est: float = 6e-26,
+        n_inj: int = 64,
+        request_memory: str = "4GB",
+        request_disk: str = "4GB",
+        request_cpu: int = 32,
+        cluster: bool = False,
+        work_in_local_dir: bool = False,
+        save_intermediate: bool = False,
+        image: Optional[str] = None,
+    ) -> Path:
         """
         Creates the DAG and SUB files for the Upper Limit stage.
         """
@@ -613,22 +627,22 @@ class WorkflowManager:
 
     def _outlier_args(
         self,
-        environment_file,
-        data_file,
-        search_file,
-        taskname,
-        freq,
-        stage,
-        freq_deriv_order,
-        prev_outlier_file_local,
-        num_toplist,
-        n_sky,
-        zero_threshold,
-        cluster,
-        separate_saturated,
-        is_injection,
-        max_workers,
-    ):
+        environment_file: str,
+        data_file: str,
+        search_file: str,
+        taskname: str,
+        freq: int,
+        stage: str,
+        freq_deriv_order: int,
+        prev_outlier_file_local: str,
+        num_toplist: int,
+        n_sky: int,
+        zero_threshold: bool,
+        cluster: bool,
+        separate_saturated: bool,
+        is_injection: bool,
+        max_workers: int,
+    ) -> str:
         """Generates command line arguments for the python outlier-collection script."""
         arg_list_string = (
             f"--environment_file {environment_file} --data_file {data_file} --search_file {search_file} "
@@ -651,16 +665,16 @@ class WorkflowManager:
 
     def _outlier_transfer_args(
         self,
-        config_files,
-        taskname,
-        freq,
-        stage,
-        n_jobs,
-        n_sky,
-        prev_outlier_file,
-        exe,
-        cluster,
-    ):
+        config_files: tuple[str, str, str],
+        taskname: str,
+        freq: int,
+        stage: str,
+        n_jobs: int,
+        n_sky: int,
+        prev_outlier_file: Path,
+        exe: Optional[str],
+        cluster: bool,
+    ) -> str:
         """Generates VARS for OSG file transfers for the outlier-collection job (config_files: the job's settings
         files)."""
 
@@ -713,28 +727,28 @@ class WorkflowManager:
 
     def make_outlier_dag(
         self,
-        environment_file,
-        data_file,
-        search_file,
-        taskname,
-        freq,
-        stage,
-        freq_deriv_order,
-        n_jobs,
-        prev_outlier_file,
-        exe,
-        num_toplist=1000,
-        n_sky=1,
-        zero_threshold=False,
-        cluster=False,
-        separate_saturated=False,
-        is_injection=False,
-        max_workers=32,
-        request_memory="8GB",
-        request_disk="8GB",
-        request_cpu=1,
-        image=None,
-    ):
+        environment_file: str,
+        data_file: str,
+        search_file: str,
+        taskname: str,
+        freq: int,
+        stage: str,
+        freq_deriv_order: int,
+        n_jobs: int,
+        prev_outlier_file: Path,
+        exe: Optional[str],
+        num_toplist: int = 1000,
+        n_sky: int = 1,
+        zero_threshold: bool = False,
+        cluster: bool = False,
+        separate_saturated: bool = False,
+        is_injection: bool = False,
+        max_workers: int = 32,
+        request_memory: str = "8GB",
+        request_disk: str = "8GB",
+        request_cpu: int = 1,
+        image: Optional[str] = None,
+    ) -> Path:
         """
         Creates the DAG and SUB files for collecting Weave outputs into an
         outlier FITS file as an OSG Condor job. Transfers in every raw Weave

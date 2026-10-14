@@ -5,15 +5,20 @@ copies the ones the seed already has, so an outlier at T_coh = 20 days has the _
 """
 
 import numpy as np
+from jaxtyping import Float, Shaped
+
+from paws.settings import Stage
 
 HISTORY_COLUMNS = ("mean2F", "mean2F_H1", "mean2F_L1", "coh2F_H1", "coh2F_L1")
 
 
-def history_column(column, stage):
+def history_column(column: str, stage: Stage) -> str:
     return f"{column}_TCoh{stage.tcoh}"
 
 
-def chain_history(chain, seed_rows):
+def chain_history(
+    chain: list[Stage], seed_rows: Shaped[np.ndarray, " n_seed"]
+) -> dict[str, Float[np.ndarray, "n_seed ..."]]:
     """{<column>_TCoh<days>: per-seed values} over the chain of the seeds: the history columns the seeds have from the
     earlier stages, and the seeds' own columns under the coherence time of their stage."""
     *earlier, prev = chain

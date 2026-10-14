@@ -5,12 +5,14 @@ W_X = sum over detector X's SFTs of 1 / S_X, S_X = the SFT's median |X|^2 over t
 on the detectors' noise.
 """
 
+from pathlib import Path
+
 import numpy as np
 
 CHUNK_DAYS = 50  # SFTs are loaded this many days at a time
 
 
-def band_noise_weight(sft_dir, band):
+def band_noise_weight(sft_dir: Path, band: int) -> tuple[float, int]:
     """(W, number of SFTs) of the SFTs in sft_dir over the 1 Hz band [band, band + 1)."""
     import lal
     import lalpulsar

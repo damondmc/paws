@@ -9,7 +9,7 @@ from paws.analysis.outlier import ResultAnalysisManager
 from paws.settings import FixedSettings
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Collect Weave results for a frequency band into a filtered outlier FITS file."
     )
