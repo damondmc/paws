@@ -3,7 +3,7 @@
 search:    mean2F threshold of a search band from its number of semicoherent templates.
 follow-up: from injections, per threshold band (band_edges): the (2F-4) excess ratio threshold between stages (a low
            percentile of the injections' (2F_now - 4) / (2F_prev - 4)) and the H1/L1 excess-ratio window (the central range
-           of their log10 r_HL).
+           of their log10 r_HL, or of the noise-normalized R_HL = r_HL * W_L1 / W_H1).
 """
 
 import numpy as np
@@ -32,12 +32,13 @@ def injection_excess_ratios(
     return (now_rows["mean2F"] - 4) / (prev_rows["mean2F"][prev_index] - 4)
 
 
-def log10_h1_l1_excess_ratio(mean2f_h1, mean2f_l1):
-    """log10 r_HL, r_HL = (2F_H1-4)/(2F_L1-4); +-5 when a detector is at or below 4."""
+def log10_h1_l1_excess_ratio(mean2f_h1, mean2f_l1, log10_noise_ratio):
+    """log10 of the H1/L1 excess ratio r_HL = (2F_H1-4)/(2F_L1-4) times W_L1/W_H1, log10_noise_ratio = log10(W_L1/W_H1)
+    (0: r_HL itself; see paws.analysis.noise_weights); +-5 when a detector is at or below 4."""
     excess_h1 = np.asarray(mean2f_h1, float) - 4
     excess_l1 = np.asarray(mean2f_l1, float) - 4
     with np.errstate(divide="ignore", invalid="ignore"):
-        log_ratio = np.log10(excess_h1 / excess_l1)
+        log_ratio = np.log10(excess_h1 / excess_l1) + log10_noise_ratio
     both_positive = (excess_h1 > 0) & (excess_l1 > 0)
     return np.where(
         both_positive, log_ratio, np.where(excess_h1 > excess_l1, 5.0, -5.0)
@@ -81,12 +82,14 @@ def h1_l1_windows(band_of_injection, log_ratio, band_edges, percentile):
 
 
 def excess_ratio_to_mean2f_threshold(excess_ratio, prev_mean2f):
-    """mean2F threshold of each seed: (2F_prev - 4) * excess_ratio + 4."""
+    """mean2F threshold of each candidate: (2F_prev - 4) * excess_ratio + 4 (2F_prev: the seed's mean2F for the
+    excess ratio cut, the search outlier's for the growth cut)."""
     return (np.asarray(prev_mean2f, float) - 4) * excess_ratio + 4
 
 
-def inside_h1_l1_window(window, mean2f_h1, mean2f_l1):
-    """True where log10 r_HL lies inside window (low, high) (one window per candidate, or one for all)."""
+def inside_h1_l1_window(window, mean2f_h1, mean2f_l1, log10_noise_ratio):
+    """True where the log10 H1/L1 excess ratio (normalized by log10_noise_ratio) lies inside window (low, high)
+    (one window per candidate, or one for all)."""
     window = np.asarray(window, float)
-    log_ratio = log10_h1_l1_excess_ratio(mean2f_h1, mean2f_l1)
+    log_ratio = log10_h1_l1_excess_ratio(mean2f_h1, mean2f_l1, log10_noise_ratio)
     return (log_ratio >= window[..., 0]) & (log_ratio <= window[..., 1])

@@ -34,7 +34,7 @@ x-t5: &t5 {tcoh: 5, order: 2, n_seg: 107, metric: test_t5.fts}
 x-t10: &t10 {tcoh: 10, order: 2, n_seg: 54, metric: test_t10.fts}
 x-t20: &t20 {tcoh: 20, order: 2, n_seg: 27, metric: test_t20.fts}
 x-grid: &grid {sky_grid: sky_grid.txt, n_sky: 3}
-x-thresholds: &thresholds {excess_ratio_percentile: 1.0, h1_l1_percentile: 1.0, bands: [20, 100, 200, 300, 400]}
+x-thresholds: &thresholds {excess_ratio_percentile: 1.0, h1_l1_percentile: 1.0, h1_l1_noise_weights: null, growth_percentile: null, growth_search_injection: null, bands: [20, 100, 200, 300, 400]}
 
 stages:
   search-0:

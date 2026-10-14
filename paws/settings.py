@@ -77,6 +77,23 @@ class FollowupThresholds(_Model):
     excess_ratio_percentile: float
     # % of injections the H1/L1 excess-ratio window may lose; null: no H1/L1 excess-ratio window
     h1_l1_percentile: Optional[float]
+    # noise-weights file in the config directory (`paws noise-weights`): the window is on R_HL = r_HL * W_L1 / W_H1;
+    # null: on r_HL
+    h1_l1_noise_weights: Optional[str]
+    # % of injections the growth cut may lose: the excess ratio of the stage over the search stage the chain starts
+    # from (Settings.chain_stages), against the injections between growth_search_injection (the injection stage of
+    # that search stage) and this stage's injection stage; null: no growth cut
+    growth_percentile: Optional[float]
+    growth_search_injection: Optional[str]
+
+    @model_validator(mode="after")
+    def _growth_settings_together(self):
+        if (self.growth_percentile is None) != (self.growth_search_injection is None):
+            raise ValueError(
+                "growth_percentile and growth_search_injection are set together"
+            )
+        return self
+
     # threshold band edges [Hz]: one excess ratio threshold / H1/L1 excess-ratio window per band
     bands: list[int]
 
@@ -253,6 +270,21 @@ class Settings:
 
     def prev(self, stage):
         return self.stage(stage.prev)
+
+    def chain_stages(self, stage):
+        """The earlier stages of a follow-up's chain, from the search stage it starts from to stage.prev."""
+        stages = [self.prev(stage)]
+        while stages[0].kind != "search":
+            if stages[0].prev is None:
+                raise ValueError(
+                    f"{stage.name}: the chain of {stage.prev} does not start from a search stage"
+                )
+            stages.insert(0, self.prev(stages[0]))
+        if len({s.tcoh for s in stages}) != len(stages):
+            raise ValueError(
+                f"{stage.name}: two stages of its chain have the same coherence time"
+            )
+        return stages
 
     def sky_offsets(self, stage):
         """(d_alpha, d_delta) arrays of the stage's sky grid, or None for a single sky point."""

@@ -15,6 +15,7 @@ import numpy as np
 
 from paws.analysis.thresholds import inside_h1_l1_window
 from paws.fits_io import read_fits_table
+from paws.pipeline.noise_weights import log10_noise_ratio
 from paws.pipeline.stage_thresholds import stage_thresholds
 
 # ---------------------------- reading seeds ----------------------------
@@ -98,11 +99,43 @@ def selected_seed_rows(settings, paths, stage, freq):
         and stage.thresholds is not None
         and stage.thresholds.h1_l1_percentile is not None
     ):
-        window = stage_thresholds(settings, stage).seed_h1_l1_window_at(freq)
+        window = stage_thresholds(settings, stage).at("seed_h1_l1_window", freq)
         seed_rows = seed_rows[
-            inside_h1_l1_window(window, seed_rows["mean2F_H1"], seed_rows["mean2F_L1"])
+            inside_h1_l1_window(
+                window,
+                seed_rows["mean2F_H1"],
+                seed_rows["mean2F_L1"],
+                log10_noise_ratio(settings, stage, freq),
+            )
         ]
     return seed_rows if len(seed_rows) else None
+
+
+# per-candidate statistics carried along a follow-up chain: each follow-up of real candidates writes its seed's own
+# values as <column>_TCoh<seed stage's tcoh> and copies the ones the seed already carries
+CARRIED_COLUMNS = ("mean2F", "mean2F_H1", "mean2F_L1", "coh2F_H1", "coh2F_L1")
+
+
+def carried_name(column, stage):
+    return f"{column}_TCoh{stage.tcoh}"
+
+
+def carried_history(chain, seed_rows):
+    """{<column>_TCoh<days>: per-seed values} over the chain of the seeds (Settings.chain_stages): the columns the
+    seeds carry from the earlier stages, and the seeds' own columns under the coherence time of their stage."""
+    *earlier, prev = chain
+    history = {}
+    for source in earlier:
+        for column in CARRIED_COLUMNS:
+            name = carried_name(column, source)
+            if name not in seed_rows.dtype.names:
+                raise ValueError(
+                    f"the seeds from {prev.name} have no {name} column; recollect its outliers"
+                )
+            history[name] = np.asarray(seed_rows[name])
+    for column in CARRIED_COLUMNS:
+        history[carried_name(column, prev)] = np.asarray(seed_rows[column])
+    return history
 
 
 def seed_plan_path(settings, stage):

@@ -2,7 +2,8 @@
 
 search / injection / injection follow-up: ResultAnalysisManager.make_outlier over the stage's own Weave results.
 follow-up of real candidates: the loudest candidate of each seed (seed plan, possibly reused results) must pass
-the stage's excess ratio threshold and, when set, its H1/L1 excess-ratio window.
+the stage's excess ratio threshold and, when set, its H1/L1 excess-ratio window (noise-normalized when the stage
+has h1_l1_noise_weights) and its growth cut over the search outlier the seed descends from.
 """
 
 from concurrent.futures import ThreadPoolExecutor
@@ -23,6 +24,8 @@ from paws.pipeline import reuse
 from paws.pipeline.context import N_THREADS, StageContext
 from paws.pipeline.dag import dag_list_path
 from paws.pipeline.followup_seeds import (
+    carried_history,
+    carried_name,
     default_seed_plan,
     load_seed_plan,
     read_seed_rows,
@@ -31,6 +34,7 @@ from paws.pipeline.followup_seeds import (
     seed_outlier_file,
     selected_seed_rows,
 )
+from paws.pipeline.noise_weights import log10_noise_ratio
 from paws.pipeline.stage_thresholds import stage_thresholds, write_threshold_records
 
 N_PROCESSES = 8
@@ -155,10 +159,12 @@ def cache_loudest_chunk(chunk):
 
 def collect_thresholded_followup(context, bands):
     """Outlier files of a follow-up of real candidates: one INFO row per seed, the seeds whose loudest
-    candidate passes the excess ratio threshold (and H1/L1 excess-ratio window) as outliers."""
+    candidate passes the excess ratio threshold (and the H1/L1 excess-ratio window and growth cut, when set) as
+    outliers, each with the statistics of the earlier stages of its chain (carried_history)."""
     stage = context.stage
     thresholds = stage_thresholds(context.settings, stage)
     write_threshold_records(context.settings, stage)
+    chain = context.settings.chain_stages(stage)
 
     seeds_by_band, files_by_band, chunks = {}, {}, []
     for freq in bands:
@@ -198,15 +204,22 @@ def collect_thresholded_followup(context, bands):
                 for first_seed in range(0, len(seed_rows), SEEDS_PER_CHUNK)
             ]
         )
+        carried = carried_history(chain, seed_rows)
         mean2f_threshold = excess_ratio_to_mean2f_threshold(
-            thresholds.excess_ratio_at(freq), seed_rows["mean2F"]
+            thresholds.at("excess_ratio", freq), seed_rows["mean2F"]
         )
         passed = loudest_per_seed["mean2F"] >= mean2f_threshold
         if thresholds.h1_l1_window is not None:
             passed &= inside_h1_l1_window(
-                thresholds.h1_l1_window_at(freq),
+                thresholds.at("h1_l1_window", freq),
                 loudest_per_seed["mean2F_H1"],
                 loudest_per_seed["mean2F_L1"],
+                log10_noise_ratio(context.settings, stage, freq),
+            )
+        if thresholds.growth is not None:
+            # the excess ratio cut over the search outlier the seed descends from
+            passed &= loudest_per_seed["mean2F"] >= excess_ratio_to_mean2f_threshold(
+                thresholds.at("growth", freq), carried[carried_name("mean2F", chain[0])]
             )
         files_per_seed = files_by_band[freq]
         spacing_files = [
@@ -222,6 +235,8 @@ def collect_thresholded_followup(context, bands):
             loudest_per_seed,
             passed,
             mean2f_threshold,
+            carried,
+            {f"TCoh{s.tcoh}": s.name for s in chain},
             spacing_files,
         )
         n_seeds += len(seed_rows)

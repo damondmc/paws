@@ -6,6 +6,7 @@ from pathlib import Path
 
 from paws.pipeline.dag import make_stage_dags
 from paws.pipeline.metric import make_segments_and_metric
+from paws.pipeline.noise_weights import write_noise_weights
 from paws.pipeline.stage_outliers import collect_stage_outliers, make_stage_outlier_dags
 from paws.pipeline.stage_thresholds import write_threshold_records
 from paws.settings import Settings
@@ -84,6 +85,18 @@ def build_parser():
     metric_parser.add_argument(
         "--force", action="store_true", help="overwrite an existing metric file"
     )
+    noise_parser = subparsers.add_parser(
+        "noise-weights",
+        help="per-detector noise weight of each 1 Hz band -> <config-dir>/<file>",
+        description="Per-detector noise weight W = sum over SFTs of 1 / S_h of each 1 Hz band, read from the SFTs, "
+        "for the noise-normalized H1/L1 window (`h1_l1_noise_weights: <file>` in a stage's thresholds). "
+        "Bands already in the file are kept.",
+    )
+    noise_parser.add_argument("file", help="file name in the config directory")
+    noise_parser.add_argument(
+        "--bands", type=int, nargs="+", required=True, help="1 Hz bands"
+    )
+    noise_parser.add_argument("--workers", type=int, default=12)
     return parser
 
 
@@ -100,6 +113,8 @@ def main(argv=None):
         collect_stage_outliers(settings, args.stage, args.bands)
     elif args.command == "thresholds":
         write_threshold_records(settings, settings.stage(args.stage))
+    elif args.command == "noise-weights":
+        write_noise_weights(settings, args.file, args.bands, args.workers)
     elif args.command == "metric":
         make_segments_and_metric(
             settings,

@@ -92,6 +92,11 @@ def test_write_loudest_outliers(tmp_path, settings, paths):
         loudest,
         passed,
         mean2f_threshold,
+        {
+            "mean2F_TCoh5": np.array([6.5, 7.0]),
+            "coh2F_H1_TCoh5": np.array([[1.0, 2.0], [3.0, 4.0]]),
+        },
+        {"TCoh5": "search-0"},
         [files_per_seed[0][0]],
     )
 
@@ -104,9 +109,13 @@ def test_write_loudest_outliers(tmp_path, settings, paths):
         assert list(outliers["mean2F"]) == [30.0] and list(
             outliers["mean2F threshold"]
         ) == [25.0]
+        assert list(outliers["mean2F_TCoh5"]) == [6.5]
+        assert outliers["coh2F_H1_TCoh5"].tolist() == [[1.0, 2.0]]
+        assert hdul[0].header["HIERARCH carried TCoh5"] == "search-0"
         info = hdul["info"].data
         assert list(info["jobIndex"]) == [0, 1] and list(info["outliers"]) == [1, 0]
     clustered = paths.outlier_file(
         50, TASKNAME, "followup-2", cluster=True, location="home"
     )
-    assert len(fits.getdata(clustered, 1)) == 1
+    clustered_rows = fits.getdata(clustered, 1)
+    assert len(clustered_rows) == 1 and list(clustered_rows["mean2F_TCoh5"]) == [6.5]

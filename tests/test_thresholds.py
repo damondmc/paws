@@ -22,14 +22,21 @@ def test_search_mean2f_threshold():
 def test_log10_h1_l1_excess_ratio():
     # (2F_H1 - 4) / (2F_L1 - 4) = 10 / 1 and 1 / 10
     assert thresholds.log10_h1_l1_excess_ratio(
-        [14.0, 5.0], [5.0, 14.0]
+        [14.0, 5.0], [5.0, 14.0], 0.0
     ) == pytest.approx([1.0, -1.0])
+
+
+def test_log10_h1_l1_excess_ratio_noise_normalized():
+    # r_HL = 10 and 1/10, times W_L1 / W_H1 = 10 per candidate
+    assert thresholds.log10_h1_l1_excess_ratio(
+        [14.0, 5.0], [5.0, 14.0], np.array([1.0, 1.0])
+    ) == pytest.approx([2.0, 0.0])
 
 
 def test_log10_h1_l1_excess_ratio_at_or_below_4_is_plus_minus_5():
     # one detector at or below 4: +5 when H1 has the larger excess, -5 otherwise
     assert list(
-        thresholds.log10_h1_l1_excess_ratio([10.0, 3.0, 4.0], [4.0, 10.0, 2.0])
+        thresholds.log10_h1_l1_excess_ratio([10.0, 3.0, 4.0], [4.0, 10.0, 2.0], 0.3)
     ) == [5.0, -5.0, 5.0]
 
 
@@ -73,9 +80,14 @@ def test_excess_ratio_to_mean2f_threshold():
 
 def test_inside_h1_l1_window():
     inside = thresholds.inside_h1_l1_window(
-        (-0.5, 0.5), [14.0, 104.0, 6.0], [14.0, 6.0, 104.0]
+        (-0.5, 0.5), [14.0, 104.0, 6.0], [14.0, 6.0, 104.0], 0.0
     )
     assert list(inside) == [True, False, False]
+    # r_HL = 50 inside once normalized by W_L1 / W_H1 = 1/50
+    inside = thresholds.inside_h1_l1_window(
+        (-0.5, 0.5), [104.0], [6.0], np.log10(1 / 50)
+    )
+    assert list(inside) == [True]
 
 
 def test_threshold_band_index():
