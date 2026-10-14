@@ -10,7 +10,7 @@ WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK"/{results,dagFiles,condorFiles}
 cp -r "$ANALYSIS/config" "$WORK/config"
-sed -i "s#^home_dir: .*#home_dir: $WORK/#" "$WORK/config/config.yaml"
+sed -i "s#^home_dir: .*#home_dir: $WORK/#" "$WORK/config/environment.yaml"
 for stage in search-0 followup-1 followup-2 followup-v2-1 followup-v2-2 followup-v3-1 \
              injections-v2-0 injections-v2-1 injections-v2-2 injections-v2-3; do
   ln -s "$ANALYSIS/results/$stage" "$WORK/results/$stage"

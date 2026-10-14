@@ -82,7 +82,7 @@ def test_write_loudest_outliers(tmp_path, settings, paths):
     loudest = loudest_rows(files_per_seed, n_threads=2)
     passed = np.array([True, False])
     mean2f_threshold = np.array([25.0, 9.0])
-    manager = ResultAnalysisManager(settings.config, settings.target)
+    manager = ResultAnalysisManager(settings)
     manager.write_loudest_outliers(
         TASKNAME,
         50,

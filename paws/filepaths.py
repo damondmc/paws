@@ -1,4 +1,5 @@
-# This file contains all file path used in the Weave-based SNR search pipeline
+"""File paths of the pipeline, derived from the settings."""
+
 from pathlib import Path
 
 
@@ -9,39 +10,22 @@ def make_dir(filenames):
 
 
 class PathManager:
+    """Paths of the DAG, Condor, Weave result and outlier files.
+
+    settings: paws.settings.FixedSettings (or Settings).
     """
-    Centralized management of file paths for the Weave pipeline.
-    Replaces static functions and global 'setup' variables with a class
-    that derives paths from the loaded config and target YAML.
-    """
 
-    def __init__(self, config, target):
-        """
-        Initialize with configuration dictionaries.
-
-        Args:
-            config (paws.settings.Config)
-            target (paws.settings.Target)
-        """
-        self.config = config
-        self.target = target
-
-        # Define Roots as Path objects for easy manipulation
-        self.home_dir = Path(config.home_dir)
-        self.osdf_dir = Path(config.osdf_dir)
-
-        # Frequently used attributes
-        self.target_name = target.name
-        self.sft_source = config.sft_source
-        self.user = config.user
-
-    # ---------------------------------------------------------
-    # Core Executables
-    # ---------------------------------------------------------
+    def __init__(self, settings):
+        self.settings = settings
+        self.home_dir = Path(settings.environment.home_dir)
+        self.osdf_dir = Path(settings.environment.osdf_dir)
+        self.target_name = settings.target.name
+        self.sft_source = settings.data.sft_source
+        self.user = settings.environment.user
 
     @property
     def weave_executable(self):
-        return self.config.executables.weave
+        return self.settings.environment.executables.weave
 
     # ---------------------------------------------------------
     # Input Data (SFTs)
@@ -54,25 +38,17 @@ class PathManager:
         """
         return "osdf://" + str(path)[5:]
 
-    def sft_file_path(self, freq, detector="H1"):
-        """
-        Returns the DIRECTORY path containing SFTs for a specific frequency.
-        sft_dir in config.yaml is the local OSDF mount path (e.g. /osdf/igwn/.../SFTs).
-        """
-        return Path(self.config.sft_dir) / detector / str(int(freq))
+    def sft_file_path(self, freq, detector):
+        """Directory of the detector's SFTs of a 1 Hz band (sft_dir in data.yaml is the local OSDF mount path)."""
+        return Path(self.settings.data.sft_dir) / detector / str(int(freq))
 
     def sft_ensemble(self, freq):
-        """
-        Returns a list of osdf:// SFT URLs for H1 and L1 detectors.
-        Converts the local mount path to an osdf:// URL by stripping the
-        leading '/osdf' mount prefix (5 chars).
-        """
-        h1_path = self.sft_file_path(freq, detector="H1")
-        l1_path = self.sft_file_path(freq, detector="L1")
-        sft_list = [self.to_osdf_url(s) for s in h1_path.glob("*.sft")] + [
-            self.to_osdf_url(s) for s in l1_path.glob("*.sft")
+        """osdf:// URLs of the SFTs of every detector in the band."""
+        return [
+            self.to_osdf_url(path)
+            for detector in self.settings.data.detectors
+            for path in self.sft_file_path(freq, detector).glob("*.sft")
         ]
-        return sft_list
 
     # ---------------------------------------------------------
     # Condor & DAG Management

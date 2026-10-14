@@ -33,14 +33,15 @@ def non_saturated_search_file(context, freq):
 
 
 def dag_injection(context, freq):
+    """New injections in the non-saturated sub-bands of the initial search."""
     stage, target = context.stage, context.target
     search_file, non_saturated_bands = non_saturated_search_file(context, freq)
     if search_file is None:
         return None
     generator = InjectionParamGenerator(
         model=context.spindown_model(freq),
-        ref_time=context.config.ref_time,
-        f0_band=context.config.f0_band,
+        ref_time=context.settings.data.ref_time,
+        f0_band=context.settings.data.f0_band,
     )
     search_params, injection_params = generator.generate_parameters(
         alpha=target.alpha,
@@ -51,9 +52,9 @@ def dag_injection(context, freq):
         spacing=outlier_file_spacing(search_file, stage.order),
         h0=context.h0_by_freq()[freq],
         freq=freq,
-        n_inj=stage.n_inj,
-        n_spacing=context.config.followup_n_spacing,
-        inj_freq_deriv_order=stage.inj_order,
+        n_inj=stage.injection.n_inj,
+        n_spacing=context.settings.followup.n_spacing,
+        inj_freq_deriv_order=stage.injection.order,
         freq_deriv_order=stage.order,
         sky_radius=stage.sky_radius,
         spacing_alpha=stage.spacing_alpha,
@@ -63,7 +64,7 @@ def dag_injection(context, freq):
         freq,
         search_params[str(freq)].data,
         inj_params=injection_params[str(freq)].data,
-        inj_freq_deriv_order=stage.inj_order,
+        inj_freq_deriv_order=stage.injection.order,
     )
 
 
@@ -79,7 +80,7 @@ def followup_params(context, freq, seed_rows):
         old_freq_deriv_order=prev_stage.order,
         new_freq_deriv_order=stage.order,
         spacing=outlier_file_spacing(seed_file, prev_stage.order),
-        n_spacing=context.config.followup_n_spacing,
+        n_spacing=context.settings.followup.n_spacing,
         sky_radius=stage.sky_radius,
         spacing_alpha=stage.spacing_alpha,
         spacing_delta=stage.spacing_delta,
@@ -88,8 +89,6 @@ def followup_params(context, freq, seed_rows):
 
 def dag_followup(context, freq):
     """Real candidates: Weave jobs for the seeds of the band's seed plan that run in this stage."""
-    if context.stage.is_injection:
-        return dag_injection_followup(context, freq)
     stage = context.stage
     seed_rows = selected_seed_rows(context.settings, context.paths, stage, freq)
     if seed_rows is None:
@@ -113,37 +112,20 @@ def dag_followup(context, freq):
 
 
 def dag_injection_followup(context, freq):
-    stage, target, prev_stage = context.stage, context.target, context.prev_stage
+    """The previous stage's injection outliers followed up with their injections."""
+    stage = context.stage
     seed_rows, injection_rows = read_seed_rows(
         context.settings, context.paths, stage, freq
     )
     if seed_rows is None or len(seed_rows) == 0:
         return None
-    seed_file = seed_outlier_file(context.settings, context.paths, stage, freq)
-    followup_params = FollowUpParamGenerator(
-        context.spindown_model(freq)
-    ).generate_parameter(
-        alpha=target.alpha,
-        dalpha=target.dalpha,
-        delta=target.delta,
-        ddelta=target.ddelta,
-        data=seed_rows,
-        old_freq_deriv_order=prev_stage.order,
-        new_freq_deriv_order=stage.order,
-        spacing=outlier_file_spacing(seed_file, prev_stage.order),
-        n_spacing=context.config.followup_n_spacing,
-        sky_radius=stage.sky_radius,
-        spacing_alpha=stage.spacing_alpha,
-        spacing_delta=stage.spacing_delta,
-    )
+    params = followup_params(context, freq, seed_rows)
     return context.make_weave_dag(
         freq,
-        followup_params.data,
+        params.data,
         inj_params=injection_rows,
-        inj_freq_deriv_order=stage.inj_order if stage.is_injection else None,
-        sky_offsets=context.settings.sky_offsets(stage)
-        if len(followup_params.data)
-        else None,
+        inj_freq_deriv_order=stage.injection.order,
+        sky_offsets=context.settings.sky_offsets(stage) if len(params.data) else None,
     )
 
 
@@ -152,10 +134,11 @@ def dag_upperlimit(context, freq):
     search_file, non_saturated_bands = non_saturated_search_file(context, freq)
     if search_file is None:
         return None
-    config_url, target_url = context.settings.job_config_urls()
+    environment_url, data_url, search_url = context.settings.job_config_urls()
     return context.workflow_manager.make_upperlimit_dag(
-        config_url,
-        target_url,
+        environment_url,
+        data_url,
+        search_url,
         context.taskname(freq),
         freq,
         stage.name,
@@ -166,13 +149,14 @@ def dag_upperlimit(context, freq):
         non_saturated_bands,
         None,
         df_grid=list(outlier_file_spacing(search_file, stage.order).values()),
-        inj_freq_deriv_order=stage.inj_order,
+        inj_freq_deriv_order=stage.injection.order,
         num_toplist=stage.keep,
         sky_radius=stage.sky_radius,
         spacing_alpha=stage.spacing_alpha,
         spacing_delta=stage.spacing_delta,
         h0_est=context.h0_by_freq()[freq],
-        n_inj=stage.n_inj,
+        n_inj=stage.injection.n_inj,
+        n_spacing=context.settings.followup.n_spacing,
         request_memory=stage.request_memory,
         request_disk=stage.request_disk,
         request_cpu=stage.request_cpu,
@@ -183,12 +167,18 @@ def dag_upperlimit(context, freq):
     )
 
 
-DAG_MAKER_BY_KIND = {
-    "search": dag_search,
-    "injection": dag_injection,
-    "followup": dag_followup,
-    "upperlimit": dag_upperlimit,
-}
+def stage_dag_maker(context):
+    """The DAG function of the stage, from its structure."""
+    stage = context.stage
+    if stage.is_search:
+        return dag_search
+    if stage.upperlimit:
+        return dag_upperlimit
+    if stage.is_injection:
+        return (
+            dag_injection_followup if context.prev_stage.is_injection else dag_injection
+        )
+    return dag_followup
 
 
 def dag_list_path(context, bands):
@@ -197,7 +187,7 @@ def dag_list_path(context, bands):
         "_".join(map(str, bands)) if bands else f"{stage.bands[0]}-{stage.bands[1]}"
     )
     return (
-        context.config.home_dir
+        context.settings.environment.home_dir
         / "dagFiles"
         / f"{stage.name}_{context.target.name}_dag{band_tag}Hz.txt"
     )
@@ -207,16 +197,17 @@ def make_stage_dags(settings, stage_name, bands):
     """DAGs of every band of the stage (or only `bands`; None: the stage's bands) and their DAG list."""
     context = StageContext(settings, stage_name)
     stage = context.stage
+    make_dag = stage_dag_maker(context)
     list_path = dag_list_path(context, bands)
     skipped_bands = []
     with open(list_path, "w") as dag_list:
         for freq in tqdm(bands or stage.freqs, desc=f"{stage.name} DAGs"):
-            dag_file = DAG_MAKER_BY_KIND[stage.kind](context, freq)
+            dag_file = make_dag(context, freq)
             if dag_file is None:
                 skipped_bands.append(freq)
             else:
                 dag_list.write(f"{dag_file}\n")
-        if stage.kind != "upperlimit":
+        if not stage.upperlimit:
             # must be the LAST entry: its ALL_NODES lines apply to every DAG in the list
             dag_list.write(
                 f"{context.workflow_manager.make_osdf_cleanup_dag(stage.name)}\n"

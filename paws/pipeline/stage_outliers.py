@@ -2,8 +2,8 @@
 
 search / injection / injection follow-up: ResultAnalysisManager.make_outlier over the stage's own Weave results.
 follow-up of real candidates: the loudest candidate of each seed (seed plan, possibly reused results) must pass
-the stage's excess ratio threshold and, when set, its H1/L1 excess-ratio window (noise-normalized when the stage
-has h1_l1_noise_weights) and its growth cut over the search outlier the seed descends from.
+the stage's excess ratio threshold and, when set, its H1/L1 excess-ratio window (noise-normalized when its threshold
+file has h1_l1_noise_weights) and its growth cut over the search outlier the seed descends from.
 """
 
 from concurrent.futures import ThreadPoolExecutor
@@ -32,7 +32,7 @@ from paws.pipeline.seed_plan import (
     save_seed_plans,
 )
 from paws.pipeline.seeds import read_seed_rows, seed_outlier_file, selected_seed_rows
-from paws.pipeline.stage_thresholds import stage_thresholds, write_threshold_records
+from paws.pipeline.stage_thresholds import record_threshold_file, stage_thresholds
 
 N_PROCESSES = 8
 SEEDS_PER_CHUNK = 2000  # loudest rows are read and cached in chunks of this many seeds
@@ -91,7 +91,7 @@ def outliers_injection(context, freq):
         context.taskname(freq),
         freq,
         mean2f_threshold,
-        context.stage.n_inj,
+        context.stage.injection.n_inj,
         **make_outlier_kwargs(context),
     )
 
@@ -133,7 +133,7 @@ def band_seed_plan(context, freq, seed_rows):
 
 def loudest_cache_path(context, freq, first_seed):
     return (
-        context.config.home_dir
+        context.settings.environment.home_dir
         / "results"
         / context.stage.name
         / "loudest"
@@ -160,7 +160,7 @@ def collect_thresholded_followup(context, bands):
     outliers, each with the statistics of the earlier stages of its chain (chain_history)."""
     stage = context.stage
     thresholds = stage_thresholds(context.settings, stage)
-    write_threshold_records(context.settings, stage)
+    record_threshold_file(context.settings, stage)
     chain = context.settings.chain_stages(stage)
 
     seeds_by_band, files_by_band, chunks = {}, {}, []
@@ -211,7 +211,9 @@ def collect_thresholded_followup(context, bands):
                 thresholds.at("h1_l1_window", freq),
                 loudest_per_seed["mean2F_H1"],
                 loudest_per_seed["mean2F_L1"],
-                log10_noise_ratio(context.settings, stage, freq),
+                log10_noise_ratio(
+                    context.settings, thresholds.h1_l1_noise_weights, freq
+                ),
             )
         if thresholds.growth is not None:
             # the excess ratio cut over the search outlier the seed descends from
@@ -249,29 +251,30 @@ def collect_thresholded_followup(context, bands):
 # ------------------------------- stages -------------------------------
 
 
-OUTLIER_COLLECTOR_BY_KIND = {
-    "search": outliers_search,
-    "injection": outliers_injection,
-    "followup": outliers_injection_followup,  # follow-ups of real candidates: collect_thresholded_followup
-}
-
-
 def collect_stage_outliers(settings, stage_name, bands):
     """Outlier files of every band of the stage (or only `bands`; None: the stage's bands)."""
     context = StageContext(settings, stage_name)
     stage = context.stage
     bands = bands or stage.freqs
-    if stage.kind == "followup" and not stage.is_injection:
-        if stage.thresholds is None:
-            raise SystemExit(f"{stage.name} has no thresholds in stages.yaml")
+    if stage.upperlimit:
+        raise SystemExit(
+            f"{stage.name}: upper-limit jobs write their own outlier files"
+        )
+    if stage.is_search:
+        collect_band = outliers_search
+    elif stage.is_injection:
+        collect_band = (
+            outliers_injection_followup
+            if context.prev_stage.is_injection
+            else outliers_injection
+        )
+    elif stage.thresholds is not None:
         collect_thresholded_followup(context, bands)
         return
-    if stage.kind not in OUTLIER_COLLECTOR_BY_KIND:
-        raise SystemExit(
-            f"{stage.name}: {stage.kind} jobs write their own outlier files"
-        )
+    else:
+        raise SystemExit(f"{stage.name} has no thresholds in followup.yaml")
     for freq in tqdm(bands, desc=f"{stage.name} outliers"):
-        OUTLIER_COLLECTOR_BY_KIND[stage.kind](context, freq)
+        collect_band(context, freq)
 
 
 def outlier_collection_dag(context, freq):
@@ -279,10 +282,11 @@ def outlier_collection_dag(context, freq):
     seed_rows, _ = read_seed_rows(context.settings, context.paths, stage, freq)
     if seed_rows is None or len(seed_rows) == 0:
         return None
-    config_url, target_url = context.settings.job_config_urls()
+    environment_url, data_url, search_url = context.settings.job_config_urls()
     return context.workflow_manager.make_outlier_dag(
-        config_url,
-        target_url,
+        environment_url,
+        data_url,
+        search_url,
         context.taskname(freq),
         freq,
         stage.name,
@@ -308,7 +312,7 @@ def make_stage_outlier_dags(settings, stage_name, bands):
     """Outlier-collection Condor DAGs of an injection follow-up stage and their DAG list."""
     context = StageContext(settings, stage_name)
     stage = context.stage
-    if not (stage.kind == "followup" and stage.is_injection):
+    if not (stage.is_injection and context.prev_stage.is_injection):
         raise SystemExit(
             "Condor outlier collection applies to injection follow-ups only (the job keeps every candidate)"
         )

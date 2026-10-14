@@ -1,0 +1,79 @@
+# Test follow-up: injection stages, a reuse source and a two-stage follow-up chain.
+# Every field of a stage is explicit; the x- anchors only group fields that stages share (in a `<<:` list the
+# first mapping wins, so *base comes last).
+n_spacing: 15.0
+
+# `paws thresholds <name>` writes thresholds/<name>.yaml from these; a stage applies it with `thresholds: <name>`
+calibrations:
+  test-t10: {injections: [injections-0, injections-1], excess_ratio_percentile: 1.0, h1_l1_percentile: 1.0,
+             h1_l1_noise_weights: null, growth_percentile: null, growth_search_injection: null,
+             bands: [20, 100, 200, 300, 400]}
+  test-t20: {injections: [injections-1, injections-2], excess_ratio_percentile: 1.0, h1_l1_percentile: 1.0,
+             h1_l1_noise_weights: null, growth_percentile: null, growth_search_injection: null,
+             bands: [20, 100, 200, 300, 400]}
+
+x-base: &base
+  prev_sat: false
+  bands: [20, 400]
+  skip_bands: []
+  toplist: 1000
+  tasks_per_job: 4
+  request_memory: 2GB
+  request_disk: 4GB
+  request_cpu: 1
+  image: null
+  search_df1: null
+  search_df2: null
+  sky_grid: null
+  n_sky: 1
+  sky_radius: 0.0
+  spacing_alpha: null
+  spacing_delta: null
+  injection: null
+  upperlimit: false
+  keep: 1
+  thresholds: null
+  reuse: []
+  cluster: true
+  separate_saturated: false
+
+x-t5: &t5 {tcoh: 5, order: 2, n_seg: 107, metric: test_t5.fts}
+x-t10: &t10 {tcoh: 10, order: 2, n_seg: 54, metric: test_t10.fts}
+x-t20: &t20 {tcoh: 20, order: 2, n_seg: 27, metric: test_t20.fts}
+x-grid: &grid {sky_grid: sky_grid.txt, n_sky: 3}
+# an injection follow-up takes its seeds' injections
+x-seed-injections: &seed_injections {order: 4, n_inj: null, n_inj_max: null, h0_file: null}
+
+stages:
+  injections-0:  # new injections in the non-saturated sub-bands of search-0
+    <<: [*t5, *base]
+    prev: search-0
+    injection: {order: 4, n_inj: 20, n_inj_max: null, h0_file: postprocess/data/h0.txt}
+
+  injections-1:
+    <<: [*t10, *base]
+    prev: injections-0
+    injection: *seed_injections
+
+  injections-2:
+    <<: [*grid, *t20, *base]
+    prev: injections-1
+    injection: *seed_injections
+
+  followup-old-1:  # an earlier run whose Weave results followup-1 reuses
+    <<: [*t10, *base]
+    prev: search-0
+
+  followup-1:
+    <<: [*t10, *base]
+    prev: search-0
+    thresholds: test-t10
+    reuse: [followup-old-1]
+
+  followup-2:
+    <<: [*grid, *t20, *base]
+    prev: followup-1
+    thresholds: test-t20
+
+chains:
+  test: [followup-1, followup-2]

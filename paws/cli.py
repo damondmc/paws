@@ -1,4 +1,4 @@
-"""paws: Weave DAGs, outliers and thresholds of the stages defined in <config-dir>/stages.yaml."""
+"""paws: Weave DAGs, outliers and thresholds of the stages defined in <config-dir>/search.yaml and followup.yaml."""
 
 import argparse
 import os
@@ -8,7 +8,7 @@ from paws.pipeline.dag import make_stage_dags
 from paws.pipeline.metric import make_segments_and_metric
 from paws.pipeline.noise_weights import write_noise_weights
 from paws.pipeline.stage_outliers import collect_stage_outliers, make_stage_outlier_dags
-from paws.pipeline.stage_thresholds import write_threshold_records
+from paws.pipeline.stage_thresholds import write_threshold_file
 from paws.settings import Settings
 
 
@@ -16,12 +16,12 @@ def build_parser():
     parser = argparse.ArgumentParser(
         prog="paws",
         description=__doc__,
-        epilog="The config directory (config.yaml, stages.yaml, target yaml) is --config-dir or $PAWS_CONFIG_DIR. "
-        "Run `paws <command> -h` for the options of a command.",
+        epilog="The config directory (environment.yaml, data.yaml, search.yaml, followup.yaml) is --config-dir or "
+        "$PAWS_CONFIG_DIR. Run `paws <command> -h` for the options of a command.",
     )
     parser.add_argument(
         "--config-dir",
-        help="directory with config.yaml and stages.yaml (default $PAWS_CONFIG_DIR)",
+        help="directory with environment.yaml, data.yaml, search.yaml and followup.yaml (default $PAWS_CONFIG_DIR)",
     )
     subparsers = parser.add_subparsers(dest="command", required=True, metavar="command")
 
@@ -31,7 +31,7 @@ def build_parser():
         description="Weave DAGs of a stage, one per 1 Hz band, and the DAG list to submit "
         "(dagFiles/<stage>_<target>_dag<bands>Hz.txt). Follow-ups also save their seed plans.",
     )
-    dag_parser.add_argument("stage", help="stage name in stages.yaml")
+    dag_parser.add_argument("stage", help="stage name in search.yaml or followup.yaml")
     dag_parser.add_argument(
         "--bands", type=int, nargs="+", help="only these 1 Hz bands (own DAG list file)"
     )
@@ -42,7 +42,9 @@ def build_parser():
         description="Outlier files of a stage, collected locally; with --condor, outlier-collection DAGs "
         "(injection follow-ups only).",
     )
-    outliers_parser.add_argument("stage", help="stage name in stages.yaml")
+    outliers_parser.add_argument(
+        "stage", help="stage name in search.yaml or followup.yaml"
+    )
     outliers_parser.add_argument(
         "--bands", type=int, nargs="+", help="only these 1 Hz bands"
     )
@@ -52,11 +54,12 @@ def build_parser():
 
     thresholds_parser = subparsers.add_parser(
         "thresholds",
-        help="write a follow-up stage's thresholds to results/<stage>/thresholds.yaml",
-        description="The excess ratio threshold and H1/L1 excess-ratio window(s) of a follow-up stage, computed from its injection "
-        "stages, as results/<stage>/thresholds.yaml.",
+        help="calibrate a threshold file from injection stages -> <config-dir>/thresholds/<name>.yaml",
+        description="The excess ratio threshold, H1/L1 excess-ratio windows and growth cut of calibration <name> "
+        "(followup.yaml), computed from its injection stages, as <config-dir>/thresholds/<name>.yaml; a follow-up "
+        "stage applies the file through `thresholds: <name>`.",
     )
-    thresholds_parser.add_argument("stage", help="stage name in stages.yaml")
+    thresholds_parser.add_argument("name", help="calibration name in followup.yaml")
 
     metric_parser = subparsers.add_parser(
         "metric",
@@ -89,7 +92,7 @@ def build_parser():
         "noise-weights",
         help="per-detector noise weight of each 1 Hz band -> <config-dir>/<file>",
         description="Per-detector noise weight W = sum over SFTs of 1 / S_h of each 1 Hz band, read from the SFTs, "
-        "for the noise-normalized H1/L1 window (`h1_l1_noise_weights: <file>` in a stage's thresholds). "
+        "for the noise-normalized H1/L1 window (`h1_l1_noise_weights: <file>` in a calibration of followup.yaml). "
         "Bands already in the file are kept.",
     )
     noise_parser.add_argument("file", help="file name in the config directory")
@@ -112,7 +115,7 @@ def main(argv=None):
     elif args.command == "outliers":
         collect_stage_outliers(settings, args.stage, args.bands)
     elif args.command == "thresholds":
-        write_threshold_records(settings, settings.stage(args.stage))
+        write_threshold_file(settings, args.name)
     elif args.command == "noise-weights":
         write_noise_weights(settings, args.file, args.bands, args.workers)
     elif args.command == "metric":

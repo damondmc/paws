@@ -60,17 +60,10 @@ class WorkflowManager:
     analysis stages (Search, Follow-up, Upper Limit).
     """
 
-    def __init__(self, config, target):
-        """
-        Initialize the WorkflowManager.
-
-        Parameters:
-            config (paws.settings.Config)
-            target (paws.settings.Target)
-        """
-        self.config = config
-        self.target = target
-        self.paths = PathManager(config, target)
+    def __init__(self, settings):
+        """settings: paws.settings.FixedSettings (or Settings)."""
+        self.settings = settings
+        self.paths = PathManager(settings)
 
         # Internal state for search parameter names
         self.freq_param_names = []
@@ -85,13 +78,13 @@ class WorkflowManager:
         """Helper to generate common keyword arguments for the search executable."""
         extra_stats = "coh2F_det,mean2F,coh2F_det,mean2F_det"
         kwargs = {
-            "semi-max-mismatch": self.config.semi_mm,
+            "semi-max-mismatch": self.settings.search.semi_mm,
             "toplist-limit": self.num_top_list,
             "extra-statistics": extra_stats,
         }
 
         if n_seg != 1:
-            kwargs["coh-max-mismatch"] = self.config.coh_mm
+            kwargs["coh-max-mismatch"] = self.settings.search.coh_mm
 
         return kwargs
 
@@ -329,8 +322,8 @@ class WorkflowManager:
             error_path=str(cr_files[1]),
             log_path=str(cr_files[2]),
             arg_list_string=f"{wrapper_path.name if use_osg else wrapper_path} $(CMD_ARGS)",
-            accounting_group=self.config.acc_group,
-            user=self.config.user,
+            accounting_group=self.settings.environment.acc_group,
+            user=self.settings.environment.user,
             request_memory=request_memory,
             request_disk=request_disk,
             request_cpu=request_cpu,
@@ -410,8 +403,9 @@ class WorkflowManager:
 
     def _ul_args(
         self,
-        config_file,
-        target_file,
+        environment_file,
+        data_file,
+        search_file,
         taskname,
         freq,
         stage,
@@ -428,6 +422,7 @@ class WorkflowManager:
         sky_radius,
         spacing_alpha,
         spacing_delta,
+        n_spacing,
         cluster,
         work_in_local_dir,
         save_intermediate,
@@ -439,13 +434,14 @@ class WorkflowManager:
         df_grid_str = " ".join(map(str, df_grid))
 
         arg_list_string = (
-            f"--config_file {config_file} --target_file {target_file} --taskname {taskname} "
+            f"--environment_file {environment_file} --data_file {data_file} --search_file {search_file} "
+            f"--taskname {taskname} "
             f"--freq {freq} --stage {stage} --freq_deriv_order {freq_deriv_order} "
             f"--df_grid {df_grid_str} --inj_freq_deriv_order {inj_freq_deriv_order} "
             f"--sft_files '{sft_files_local}' --metric_file {metric_file_local} "
             f"--n_inj {n_inj} --num_toplist {num_toplist} --h0_est {h0_est} "
             f"--mean2f_th {mean2f_th} --non_sat_bands {bands_str} "
-            f"--sky_radius {sky_radius} --n_cpus {request_cpu}"
+            f"--sky_radius {sky_radius} --n_spacing {n_spacing} --n_cpus {request_cpu}"
         )
 
         if spacing_alpha is not None:
@@ -463,8 +459,7 @@ class WorkflowManager:
 
     def _ul_transfer_args(
         self,
-        config_file,
-        target_file,
+        config_files,
         taskname,
         freq,
         metric_file,
@@ -474,11 +469,10 @@ class WorkflowManager:
         exe,
         image,
     ):
-        """Generates VARS for OSG file transfers for Upper Limits."""
+        """Generates VARS for OSG file transfers for Upper Limits (config_files: the job's settings files)."""
 
         input_files_list = ([str(exe)] if exe else []) + [
-            str(config_file),
-            str(target_file),
+            str(config_file) for config_file in config_files
         ]
         input_files_list.extend([str(s) for s in sft_files])
         input_files_list.append(str(metric_file))
@@ -499,8 +493,9 @@ class WorkflowManager:
 
     def make_upperlimit_dag(
         self,
-        config_file,
-        target_file,
+        environment_file,
+        data_file,
+        search_file,
         taskname,
         freq,
         stage,
@@ -510,6 +505,7 @@ class WorkflowManager:
         mean2f_th,
         non_sat_bands,
         exe,
+        n_spacing,
         df_grid=[1e-6, 1e-13, 1e-20],
         inj_freq_deriv_order=4,
         num_toplist=1,
@@ -545,8 +541,9 @@ class WorkflowManager:
         metric_file_local = Path(metric_file).name
 
         python_args = self._ul_args(
-            config_file=Path(config_file).name,
-            target_file=Path(target_file).name,
+            environment_file=Path(environment_file).name,
+            data_file=Path(data_file).name,
+            search_file=Path(search_file).name,
             taskname=taskname,
             freq=freq,
             stage=stage,
@@ -563,6 +560,7 @@ class WorkflowManager:
             sky_radius=sky_radius,
             spacing_alpha=spacing_alpha,
             spacing_delta=spacing_delta,
+            n_spacing=n_spacing,
             cluster=cluster,
             work_in_local_dir=work_in_local_dir,
             save_intermediate=save_intermediate,
@@ -581,8 +579,8 @@ class WorkflowManager:
             error_path=str(cr_files[1]),
             log_path=str(cr_files[2]),
             arg_list_string=full_arg_string,
-            accounting_group=self.config.acc_group,
-            user=self.config.user,
+            accounting_group=self.settings.environment.acc_group,
+            user=self.settings.environment.user,
             request_memory=request_memory,
             request_disk=request_disk,
             request_cpu=request_cpu,
@@ -592,8 +590,7 @@ class WorkflowManager:
         )
 
         arg_list = self._ul_transfer_args(
-            config_file,
-            target_file,
+            (environment_file, data_file, search_file),
             taskname,
             freq,
             metric_file,
@@ -616,8 +613,9 @@ class WorkflowManager:
 
     def _outlier_args(
         self,
-        config_file,
-        target_file,
+        environment_file,
+        data_file,
+        search_file,
         taskname,
         freq,
         stage,
@@ -633,7 +631,8 @@ class WorkflowManager:
     ):
         """Generates command line arguments for the python outlier-collection script."""
         arg_list_string = (
-            f"--config_file {config_file} --target_file {target_file} --taskname {taskname} "
+            f"--environment_file {environment_file} --data_file {data_file} --search_file {search_file} "
+            f"--taskname {taskname} "
             f"--freq {freq} --stage {stage} --freq_deriv_order {freq_deriv_order} "
             f"--prev_outlier_file {prev_outlier_file_local} --num_toplist {num_toplist} "
             f"--n_sky {n_sky} --max_workers {max_workers}"
@@ -652,8 +651,7 @@ class WorkflowManager:
 
     def _outlier_transfer_args(
         self,
-        config_file,
-        target_file,
+        config_files,
         taskname,
         freq,
         stage,
@@ -663,7 +661,8 @@ class WorkflowManager:
         exe,
         cluster,
     ):
-        """Generates VARS for OSG file transfers for the outlier-collection job."""
+        """Generates VARS for OSG file transfers for the outlier-collection job (config_files: the job's settings
+        files)."""
 
         # This stage's raw Weave result files live on OSDF; pull them via the
         # osdf:// scheme so they transfer over the OSDF plugin like SFTs do.
@@ -676,11 +675,8 @@ class WorkflowManager:
 
         input_files_list = (
             ([str(exe)] if exe else [])
-            + [
-                str(config_file),
-                str(target_file),
-                str(prev_outlier_file),
-            ]
+            + [str(config_file) for config_file in config_files]
+            + [str(prev_outlier_file)]
             + weave_files
         )
         input_files_str = ", ".join(input_files_list)
@@ -717,8 +713,9 @@ class WorkflowManager:
 
     def make_outlier_dag(
         self,
-        config_file,
-        target_file,
+        environment_file,
+        data_file,
+        search_file,
         taskname,
         freq,
         stage,
@@ -766,8 +763,9 @@ class WorkflowManager:
         prev_outlier_file_local = Path(prev_outlier_file).name
 
         python_args = self._outlier_args(
-            config_file=Path(config_file).name,
-            target_file=Path(target_file).name,
+            environment_file=Path(environment_file).name,
+            data_file=Path(data_file).name,
+            search_file=Path(search_file).name,
             taskname=taskname,
             freq=freq,
             stage=stage,
@@ -794,8 +792,8 @@ class WorkflowManager:
             error_path=str(cr_files[1]),
             log_path=str(cr_files[2]),
             arg_list_string=full_arg_string,
-            accounting_group=self.config.acc_group,
-            user=self.config.user,
+            accounting_group=self.settings.environment.acc_group,
+            user=self.settings.environment.user,
             request_memory=request_memory,
             request_disk=request_disk,
             request_cpu=request_cpu,
@@ -805,8 +803,7 @@ class WorkflowManager:
         )
 
         arg_list = self._outlier_transfer_args(
-            config_file,
-            target_file,
+            (environment_file, data_file, search_file),
             taskname,
             freq,
             stage,

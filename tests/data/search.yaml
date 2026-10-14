@@ -1,0 +1,41 @@
+# Test search: the initial search stage and the settings fixed once it has run.
+semi_mm: 0.2
+coh_mm: 0.1
+cluster_n_spacing: 10.0
+
+spindown:
+  nc_min: 2.0
+  nc_max: 7.0
+  # (frequency [Hz], age [years]) knots: 300 years up to 199 Hz, then 0.5 years more per Hz
+  age_knots: [[199, 300], [399, 400]]
+
+stages:
+  search-0:
+    tcoh: 5
+    order: 2
+    n_seg: 107
+    metric: test_t5.fts
+    prev: null
+    prev_sat: false
+    bands: [20, 400]
+    skip_bands: []
+    toplist: 2000
+    tasks_per_job: 4
+    request_memory: 2GB
+    request_disk: 4GB
+    request_cpu: 1
+    image: null
+    search_df1: 5.0e-10
+    search_df2: 1.0e-17
+    sky_grid: null
+    n_sky: 1
+    sky_radius: 0.0
+    spacing_alpha: null
+    spacing_delta: null
+    injection: null
+    upperlimit: false
+    keep: 2000
+    thresholds: null
+    reuse: []
+    cluster: true
+    separate_saturated: true

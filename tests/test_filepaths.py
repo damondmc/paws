@@ -11,12 +11,12 @@ def test_outlier_file_home_and_osdf(paths, settings):
         50, TASKNAME, "followup-1", cluster=False, location="osdf"
     )
     assert home == (
-        settings.config.home_dir
+        settings.environment.home_dir
         / "results/followup-1/TestTarget/TEST_SFTS/50/Outliers"
         / f"{TASKNAME}_outlier_clustered.fts"
     )
     assert osdf == (
-        settings.config.osdf_dir
+        settings.environment.osdf_dir
         / "o4ab/results/followup-1/TestTarget/TEST_SFTS/50/Outliers"
         / f"{TASKNAME}_outlier.fts"
     )
@@ -49,7 +49,7 @@ def test_outlier_file_bad_location(paths):
 def test_weave_output_file(paths, settings):
     path = paths.weave_output_file(50, TASKNAME, 7, "followup-1")
     assert path == (
-        settings.config.osdf_dir
+        settings.environment.osdf_dir
         / "o4ab/results/followup-1/TestTarget/TEST_SFTS/50/Result"
         / f"{TASKNAME}.fts.7"
     )

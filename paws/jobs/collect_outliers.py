@@ -6,15 +6,16 @@ import numpy as np
 from astropy.io import fits
 
 from paws.analysis.outlier import ResultAnalysisManager
-from paws.settings import Config, Target
+from paws.settings import FixedSettings
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="Collect Weave results for a frequency band into a filtered outlier FITS file."
     )
-    parser.add_argument("--config_file", type=str, required=True)
-    parser.add_argument("--target_file", type=str, required=True)
+    parser.add_argument("--environment_file", type=str, required=True)
+    parser.add_argument("--data_file", type=str, required=True)
+    parser.add_argument("--search_file", type=str, required=True)
     parser.add_argument("--taskname", type=str, required=True)
     parser.add_argument("--freq", type=int, required=True)
     parser.add_argument("--stage", type=str, required=True)
@@ -42,7 +43,7 @@ def main():
     t0 = time.time()
 
     result_manager = ResultAnalysisManager(
-        Config.from_yaml(args.config_file), Target.from_yaml(args.target_file)
+        FixedSettings(args.environment_file, args.data_file, args.search_file)
     )
 
     mean2f_th = fits.getdata(args.prev_outlier_file)["mean2F threshold"]

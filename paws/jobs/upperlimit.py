@@ -13,7 +13,7 @@ from paws.definitions import phase_param_name
 from paws.jobs.weave_runner import determine_efficiency
 from paws.params.injections import InjectionParamGenerator
 from paws.params.models import PowerLawModel
-from paws.settings import Config, Target
+from paws.settings import FixedSettings
 
 # Configure Logging
 logging.basicConfig(
@@ -48,11 +48,14 @@ def main():
     parser = argparse.ArgumentParser(
         description="Calculate 95% Upper Limit via Injection."
     )
+    parser.add_argument("--environment_file", type=str, required=True)
+    parser.add_argument("--data_file", type=str, required=True)
+    parser.add_argument("--search_file", type=str, required=True)
     parser.add_argument(
-        "--config_file", type=str, required=True, help="Path to config.yaml"
-    )
-    parser.add_argument(
-        "--target_file", type=str, required=True, help="Path to the target yaml"
+        "--n_spacing",
+        type=float,
+        required=True,
+        help="search range around each injection: this many template spacings each side",
     )
     parser.add_argument(
         "--taskname", type=str, default="GalacticCenter_upperlimit_TCoh5_O2_97Hz"
@@ -131,8 +134,8 @@ def main():
     np.random.seed(0)
 
     # Load Configuration
-    config = Config.from_yaml(args.config_file)
-    target = Target.from_yaml(args.target_file)
+    settings = FixedSettings(args.environment_file, args.data_file, args.search_file)
+    target = settings.target
 
     weave_exe = "/opt/paws/.venv/bin/lalpulsar_Weave"  # Weave of the container image
 
@@ -151,11 +154,12 @@ def main():
     # spacing = {name: fits.getval(args.data_file, name, ext=0) for name in freq_deriv_names}
     df_grid = {name: df_grid[i] for i, name in enumerate(freq_deriv_names)}
 
-    f0_band = config.f0_band
+    f0_band = settings.data.f0_band
 
     # 2. Initialize Managers
+    spindown = settings.search.spindown
     model = PowerLawModel(
-        nc_min=config.nc_min, nc_max=config.nc_max, tau=target.tau(freq)
+        nc_min=spindown.nc_min, nc_max=spindown.nc_max, tau=spindown.tau(freq)
     )
     injection_generator = InjectionParamGenerator(
         model=model, ref_time=ref_time, f0_band=f0_band
@@ -171,7 +175,7 @@ def main():
         h0=1.0,
         freq=freq,
         n_inj=n_inj,
-        n_spacing=config.followup_n_spacing,
+        n_spacing=args.n_spacing,
         inj_freq_deriv_order=inj_freq_deriv_order,
         freq_deriv_order=freq_deriv_order,
         sky_radius=sky_radius,
@@ -204,8 +208,7 @@ def main():
         eff, outlier_file_path = determine_efficiency(
             taskname=f"{taskname}_{iter_count}",
             stage=stage,
-            config=config,
-            target=target,
+            settings=settings,
             freq=freq,
             freq_deriv_order=freq_deriv_order,
             n_sky=n_sky,
@@ -262,8 +265,7 @@ def main():
             eff, outlier_file_path = determine_efficiency(
                 taskname=f"{taskname}_{iter_count}",
                 stage=stage,
-                config=config,
-                target=target,
+                settings=settings,
                 freq=freq,
                 freq_deriv_order=freq_deriv_order,
                 n_sky=n_sky,
@@ -293,8 +295,7 @@ def main():
     eff, outlier_file_path = determine_efficiency(
         taskname=taskname,
         stage=stage,
-        config=config,
-        target=target,
+        settings=settings,
         freq=freq,
         freq_deriv_order=freq_deriv_order,
         n_sky=n_sky,

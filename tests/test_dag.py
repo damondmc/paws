@@ -37,7 +37,7 @@ def arg(line, name):
 
 @pytest.fixture
 def dag_file(settings):
-    manager = WorkflowManager(settings.config, settings.target)
+    manager = WorkflowManager(settings)
     sft_files = ["osdf:///igwn/sfts/H1/a.sft", "osdf:///igwn/sfts/L1/b.sft"]
     return manager.make_search_dag(
         TASKNAME,
@@ -125,5 +125,5 @@ def test_outputs_remap_to_osdf_result_files(dag_file, paths):
 def test_sub_file(dag_file, settings):
     sub = dag_file.with_suffix(".sub").read_text()
     assert "request_memory = 2GB" in sub
-    assert f"accounting_group = {settings.config.acc_group}" in sub
+    assert f"accounting_group = {settings.environment.acc_group}" in sub
     assert "arguments = run_weave_batch_followup-2.sh $(CMD_ARGS)" in sub

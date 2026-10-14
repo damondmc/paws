@@ -18,12 +18,12 @@ class StageContext:
 
     def __init__(self, settings, stage_name):
         self.settings = settings
-        self.config, self.target = settings.config, settings.target
+        self.target = settings.target
         self.stage = settings.stage(stage_name)
         self.prev_stage = settings.prev(self.stage) if self.stage.prev else None
-        self.paths = PathManager(self.config, self.target)
-        self.workflow_manager = WorkflowManager(self.config, self.target)
-        self.result_manager = ResultAnalysisManager(self.config, self.target)
+        self.paths = PathManager(settings)
+        self.workflow_manager = WorkflowManager(settings)
+        self.result_manager = ResultAnalysisManager(settings)
         self.seed_plans = {}  # band -> SeedPlan built while writing a follow-up stage's DAGs
         self.seed_counts = {"seeds": 0, "new": 0}
 
@@ -41,15 +41,16 @@ class StageContext:
         )
 
     def spindown_model(self, freq):
+        spindown = self.settings.search.spindown
         return PowerLawModel(
-            nc_min=self.config.nc_min,
-            nc_max=self.config.nc_max,
-            tau=self.target.tau(freq),
+            nc_min=spindown.nc_min, nc_max=spindown.nc_max, tau=spindown.tau(freq)
         )
 
     @cache
     def h0_by_freq(self):
-        freqs, h0_values, _ = np.loadtxt(self.config.home_dir / self.stage.h0_file).T
+        freqs, h0_values, _ = np.loadtxt(
+            self.settings.environment.home_dir / self.stage.injection.h0_file
+        ).T
         return dict(zip(freqs.astype(int), h0_values))
 
     def search_params(self, freq):
@@ -62,7 +63,7 @@ class StageContext:
             target.ddelta,
             freq,
             freq + 1,
-            df=self.config.f0_band,
+            df=self.settings.data.f0_band,
             df1=self.stage.search_df1,
             df2=self.stage.search_df2,
         )

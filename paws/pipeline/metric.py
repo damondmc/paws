@@ -1,8 +1,8 @@
 """Segment list, data check, coverage plot and (optionally) Weave metric for a coherence time.
 
 Writes to <home_dir>/metricSetup/ (or out_dir)
-  o4ab_h1_timestamps.txt, o4ab_l1_timestamps.txt   SFT timestamps
-  o4_<T>days_segments.txt                           segments of T days containing H1 or L1 data
+  o4ab_<detector>_timestamps.txt                    SFT timestamps of each detector
+  o4_<T>days_segments.txt                           segments of T days containing data of some detector
   o4_<T>days_segments.png                           detector coverage and segments
   o4ab_t<T>_s<N>.fts                                with make_metric_file (lalpulsar_WeaveSetup)
 """
@@ -18,13 +18,13 @@ from paws.filepaths import PathManager
 
 START_TIME = 1368970000
 SFT_DURATION = 1800
-DETECTORS = ("H1", "L1")
+DETECTOR_COLORS = ("#2a78d6", "#eb6834", "#3a9d5d", "#8e5bd6")
 
 
-def read_timestamps(paths, out_dir, sft_band, refresh):
+def read_timestamps(paths, detectors, out_dir, sft_band, refresh):
     """SFT timestamps of each detector, read from one SFT file each (cached as text)."""
     timestamps = {}
-    for detector in DETECTORS:
+    for detector in detectors:
         cache_path = out_dir / f"o4ab_{detector.lower()}_timestamps.txt"
         if refresh or not cache_path.exists():
             from pyfstat.utils import get_sft_as_arrays
@@ -87,22 +87,27 @@ def sft_runs(times, origin, time_unit):
 def plot_coverage(timestamps, segments, tcoh_day, path):
     week = 7 * 86400
     origin = segments[0, 0]
+    n_detectors = len(timestamps)
     plt.style.use("paws")
     fig, ax = plt.subplots(figsize=(16, 5))
     segment_bars = [
         ((start - origin) / week, (end - start) / week) for start, end in segments
     ]
     ax.broken_barh(
-        segment_bars, (0, 2), facecolors="#dcdbd6", edgecolor="#52514e", linewidth=0.6
+        segment_bars,
+        (0, n_detectors),
+        facecolors="#dcdbd6",
+        edgecolor="#52514e",
+        linewidth=0.6,
     )
-    for row, (detector, color) in enumerate((("H1", "#2a78d6"), ("L1", "#eb6834"))):
+    for row, (detector, times) in enumerate(timestamps.items()):
         ax.broken_barh(
-            sft_runs(timestamps[detector], origin, week),
+            sft_runs(times, origin, week),
             (row + 0.1, 0.8),
-            facecolors=color,
+            facecolors=DETECTOR_COLORS[row % len(DETECTOR_COLORS)],
         )
-    ax.set_yticks([0.5, 1.5], ["H1", "L1"])
-    ax.set_ylim(0, 2)
+    ax.set_yticks([row + 0.5 for row in range(n_detectors)], list(timestamps))
+    ax.set_ylim(0, n_detectors)
     ax.set_xlim(-0.5, (segments[-1, 1] - origin) / week + 0.5)
     ax.set_xlabel(f"time since GPS {origin} [weeks]")
     ax.legend(
@@ -124,19 +129,21 @@ def plot_coverage(timestamps, segments, tcoh_day, path):
 
 
 def run_weave_setup(
-    config, segment_file, tcoh_day, spindowns, metric_type, out_dir, force
+    settings, segment_file, tcoh_day, spindowns, metric_type, out_dir, force
 ):
     metric_path = out_dir / f"o4ab_t{tcoh_day:g}_s{spindowns}.fts"
     if metric_path.exists() and not force:
         raise SystemExit(f"{metric_path} exists (use --force to overwrite)")
-    executable = config.executables.weave_setup or shutil.which("lalpulsar_WeaveSetup")
+    executable = settings.environment.executables.weave_setup or shutil.which(
+        "lalpulsar_WeaveSetup"
+    )
     command = [
         executable,
         f"--output-file={metric_path}",
-        "--detectors=H1,L1",
+        f"--detectors={','.join(settings.data.detectors)}",
         f"--segment-list={segment_file}",
         f"--spindowns={spindowns}",
-        f"--ref-time={config.ref_time}",
+        f"--ref-time={settings.data.ref_time}",
         f"--metric-type={metric_type}",
     ]
     print(" ".join(command), flush=True)
@@ -157,10 +164,12 @@ def make_segments_and_metric(
 ):
     """Segment list and coverage plot for tcoh_day; with make_metric_file also the Weave metric.
     out_dir None: <home_dir>/metricSetup."""
-    out_dir = out_dir or settings.config.home_dir / "metricSetup"
+    out_dir = out_dir or settings.environment.home_dir / "metricSetup"
     out_dir.mkdir(parents=True, exist_ok=True)
-    paths = PathManager(settings.config, settings.target)
-    timestamps = read_timestamps(paths, out_dir, sft_band, refresh_timestamps)
+    paths = PathManager(settings)
+    timestamps = read_timestamps(
+        paths, settings.data.detectors, out_dir, sft_band, refresh_timestamps
+    )
     segments = make_segments(timestamps, tcoh_day)
     segment_file = out_dir / f"o4_{tcoh_day:g}days_segments.txt"
     np.savetxt(segment_file, segments, fmt="%d", delimiter="\t")
@@ -171,7 +180,7 @@ def make_segments_and_metric(
     )
     if make_metric_file:
         run_weave_setup(
-            settings.config,
+            settings,
             segment_file,
             tcoh_day,
             spindowns,

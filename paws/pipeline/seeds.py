@@ -1,5 +1,6 @@
 """Seeds of a follow-up stage: the previous stage's outliers in one band (with their injections for an injection
-follow-up); seeds from a search stage are kept only inside the stage's seed H1/L1 excess-ratio window, when it has one.
+follow-up); seeds from the initial search are kept only inside the stage's seed H1/L1 excess-ratio window, when its
+threshold file has one.
 """
 
 from paws.analysis.statistics import inside_h1_l1_window
@@ -33,32 +34,28 @@ def read_seed_rows(settings, paths, stage, freq):
     injection_rows = read_fits_table(path, "injection") if stage.is_injection else None
     if seed_rows is None:
         return None, None
-    if stage.n_inj_max is not None:
-        seed_rows = seed_rows[: stage.n_inj_max]
-        injection_rows = (
-            None if injection_rows is None else injection_rows[: stage.n_inj_max]
-        )
+    if stage.is_injection and stage.injection.n_inj_max is not None:
+        n_inj_max = stage.injection.n_inj_max
+        seed_rows = seed_rows[:n_inj_max]
+        injection_rows = None if injection_rows is None else injection_rows[:n_inj_max]
     return seed_rows, injection_rows
 
 
 def selected_seed_rows(settings, paths, stage, freq):
-    """Seed rows of a follow-up stage in one band: the previous stage's outliers; seeds from a search stage are
+    """Seed rows of a follow-up stage in one band: the previous stage's outliers; seeds from the initial search are
     kept only inside the stage's seed H1/L1 excess-ratio window (when it has one). None when the band has no seeds."""
     seed_rows, _ = read_seed_rows(settings, paths, stage, freq)
     if seed_rows is None or len(seed_rows) == 0:
         return None
-    if (
-        settings.prev(stage).kind == "search"
-        and stage.thresholds is not None
-        and stage.thresholds.h1_l1_percentile is not None
-    ):
-        window = stage_thresholds(settings, stage).at("seed_h1_l1_window", freq)
-        seed_rows = seed_rows[
-            inside_h1_l1_window(
-                window,
-                seed_rows["mean2F_H1"],
-                seed_rows["mean2F_L1"],
-                log10_noise_ratio(settings, stage, freq),
-            )
-        ]
+    if settings.prev(stage).is_search and stage.thresholds is not None:
+        thresholds = stage_thresholds(settings, stage)
+        if thresholds.seed_h1_l1_window is not None:
+            seed_rows = seed_rows[
+                inside_h1_l1_window(
+                    thresholds.at("seed_h1_l1_window", freq),
+                    seed_rows["mean2F_H1"],
+                    seed_rows["mean2F_L1"],
+                    log10_noise_ratio(settings, thresholds.h1_l1_noise_weights, freq),
+                )
+            ]
     return seed_rows if len(seed_rows) else None

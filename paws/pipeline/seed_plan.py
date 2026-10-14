@@ -42,7 +42,7 @@ def default_seed_plan(stage, seed_rows):
 
 
 def seed_plan_path(settings, stage):
-    return settings.config.home_dir / "results" / stage.name / "seed_plan.npz"
+    return settings.environment.home_dir / "results" / stage.name / "seed_plan.npz"
 
 
 def load_seed_plan(settings, stage, freq):

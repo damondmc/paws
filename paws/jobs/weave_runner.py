@@ -17,8 +17,7 @@ def delete_files(result_file_list):
 
 
 def search_job(
-    config,
-    target,
+    settings,
     freq_deriv_order,
     n_seg,
     num_toplist,
@@ -29,7 +28,7 @@ def search_job(
     search_data,
 ):
     """
-    Worker function to run a single WEAVE search job.
+    Worker function to run a single WEAVE search job (settings: paws.settings.FixedSettings).
     """
     result_file, param_row = search_data
     make_dir([result_file])
@@ -43,16 +42,16 @@ def search_job(
         f"--output-file={result_file}",
         f'--sft-files="{sft_files}"',
         f"--setup-file={metric_file}",
-        f"--semi-max-mismatch={config.semi_mm}",
+        f"--semi-max-mismatch={settings.search.semi_mm}",
         f"--toplist-limit={num_toplist}",
         f"--extra-statistics={extra_stats}",
-        f"--alpha={target.alpha}",
-        f"--delta={target.delta}",
+        f"--alpha={settings.target.alpha}",
+        f"--delta={settings.target.delta}",
     ]
 
     # Add coherence mismatch if the coherence time is not equal to the total observation time
     if n_seg > 1:
-        cmd_parts.append(f"--coh-max-mismatch={config.coh_mm}")
+        cmd_parts.append(f"--coh-max-mismatch={settings.search.coh_mm}")
 
     # Add frequency/derivative parameters
     freq_names, freq_deriv_names = phase_param_name(freq_deriv_order)
@@ -69,8 +68,7 @@ def search_job(
 
 
 def injection_job(
-    config,
-    target,
+    settings,
     freq_deriv_order,
     n_seg,
     num_toplist,
@@ -82,7 +80,7 @@ def injection_job(
     injection_data,
 ):
     """
-    Worker function to run a single WEAVE injection job.
+    Worker function to run a single WEAVE injection job (settings: paws.settings.FixedSettings).
     """
     result_file, param_row = search_data
     make_dir([result_file])
@@ -96,15 +94,15 @@ def injection_job(
         f"--output-file={result_file}",
         f'--sft-files="{sft_files}"',
         f"--setup-file={metric_file}",
-        f"--semi-max-mismatch={config.semi_mm}",
+        f"--semi-max-mismatch={settings.search.semi_mm}",
         f"--toplist-limit={num_toplist}",
         f"--extra-statistics={extra_stats}",
-        f"--alpha={target.alpha}",
-        f"--delta={target.delta}",
+        f"--alpha={settings.target.alpha}",
+        f"--delta={settings.target.delta}",
     ]
 
     if n_seg > 1:
-        cmd_parts.append(f"--coh-max-mismatch={config.coh_mm}")
+        cmd_parts.append(f"--coh-max-mismatch={settings.search.coh_mm}")
 
     freq_names, freq_deriv_names = phase_param_name(freq_deriv_order)
     for f_name, df_name in zip(freq_names, freq_deriv_names):
@@ -137,8 +135,7 @@ def injection_job(
 def determine_efficiency(
     taskname,
     stage,
-    config,
-    target,
+    settings,
     freq,
     freq_deriv_order,
     n_sky,
@@ -157,10 +154,10 @@ def determine_efficiency(
     save_intermediate=False,
 ):
     """
-    Runs injections in parallel and calculates detection efficiency.
+    Runs injections in parallel and calculates detection efficiency (settings: paws.settings.FixedSettings).
     """
-    paths = PathManager(config=config, target=target)
-    result_manager = ResultAnalysisManager(config=config, target=target)
+    paths = PathManager(settings)
+    result_manager = ResultAnalysisManager(settings)
 
     # Prepare File Paths
     if work_in_local_dir:
@@ -180,8 +177,7 @@ def determine_efficiency(
             injection_job,
             [
                 (
-                    config,
-                    target,
+                    settings,
                     freq_deriv_order,
                     n_seg,
                     num_toplist,

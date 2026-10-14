@@ -116,17 +116,10 @@ class ResultAnalysisManager:
     Manages the collection, filtering, and storage of search results.
     """
 
-    def __init__(self, config, target):
-        """
-        Initialize the ResultManager.
-
-        Parameters:
-            config (paws.settings.Config)
-            target (paws.settings.Target)
-        """
-        self.config = config
-        self.target = target
-        self.paths = PathManager(config, target)
+    def __init__(self, settings):
+        """settings: paws.settings.FixedSettings (or Settings)."""
+        self.settings = settings
+        self.paths = PathManager(settings)
 
     def _collect_outlier_data(
         self,
@@ -275,7 +268,7 @@ class ResultAnalysisManager:
             spacing = {key: primary_hdu.header[f"HIERARCH {key}"] for key in dfn}
 
             centers_idx, cluster_size, cluster_member = clustering(
-                outlier_data, spacing, self.config.cluster_n_spacing
+                outlier_data, spacing, self.settings.search.cluster_n_spacing
             )
 
             # 2. Map Data (Handle Injection vs Standard)
@@ -460,7 +453,7 @@ class ResultAnalysisManager:
 
         # 7. Build and Add Non-Saturated Band HDU (Search specific)
         if "search" in stage.lower():
-            f0_band = self.config.f0_band
+            f0_band = self.settings.data.f0_band
             sat_matrix = info_data["isSaturated"].reshape(int(1.0 / f0_band), -1)
             idx = np.where(~sat_matrix.any(axis=1))[0]
             non_sat_data = np.recarray((len(idx),), dtype=[("non_sat_band", ">f8")])
@@ -481,7 +474,7 @@ class ResultAnalysisManager:
         # 9. Handle Clustering
         if cluster and hdus[1].data is not None:
             primary_hdu.header["HIERARCH cluster_n_spacing"] = (
-                self.config.cluster_n_spacing
+                self.settings.search.cluster_n_spacing
             )
 
             inj_hdu_to_pass = next((h for h in hdus if h.name == "INJECTION"), None)
@@ -569,7 +562,9 @@ class ResultAnalysisManager:
         fits.HDUList(
             [primary_hdu, outlier_hdu, fits.BinTableHDU(data=info, name="info")]
         ).writeto(path, overwrite=True)
-        primary_hdu.header["HIERARCH cluster_n_spacing"] = self.config.cluster_n_spacing
+        primary_hdu.header["HIERARCH cluster_n_spacing"] = (
+            self.settings.search.cluster_n_spacing
+        )
         return self._write_clustered_results(
             freq, taskname, stage, outlier_hdu.data, freq_deriv_order, primary_hdu
         )

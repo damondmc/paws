@@ -1,7 +1,7 @@
 """Noise-weights file of the noise-normalized H1/L1 excess-ratio window (paws.analysis.noise_weights).
 
-`paws noise-weights <file>` writes <config-dir>/<file> (columns band, W_H1, W_L1, n_H1, n_L1); a stage uses it through
-`h1_l1_noise_weights: <file>` in its thresholds.
+`paws noise-weights <file>` writes <config-dir>/<file> (columns band, W_H1, W_L1, n_H1, n_L1); a calibration uses it
+through `h1_l1_noise_weights: <file>` (followup.yaml), recorded in the threshold file it writes.
 """
 
 import os
@@ -22,7 +22,7 @@ def write_noise_weights(settings, file_name, bands, n_workers):
     """Noise weights of the given 1 Hz bands into <config-dir>/<file_name>; bands already in the file are kept, and
     the file is rewritten every 20 bands."""
     path = settings.config_dir / file_name
-    paths = PathManager(settings.config, settings.target)
+    paths = PathManager(settings)
     rows = {int(row[0]): list(row) for row in _read_rows(path)} if path.exists() else {}
     todo = [band for band in bands if band not in rows]
     with ProcessPoolExecutor(n_workers) as pool:
@@ -45,10 +45,9 @@ def _band_row(paths, band):
     return [band, w_h1, w_l1, n_h1, n_l1]
 
 
-def log10_noise_ratio(settings, stage, freq):
-    """log10(W_L1 / W_H1) of the 1 Hz band(s) freq for the stage's H1/L1 window: from the stage's
-    h1_l1_noise_weights file, 0 without one (window on r_HL)."""
-    file_name = stage.thresholds.h1_l1_noise_weights
+def log10_noise_ratio(settings, file_name, freq):
+    """log10(W_L1 / W_H1) of the 1 Hz band(s) freq from the noise-weights file `file_name` of the config directory;
+    0 when file_name is None (window on r_HL)."""
     if file_name is None:
         return np.zeros(np.shape(freq))
     ratios = _log10_noise_ratios(settings.config_dir / file_name)
