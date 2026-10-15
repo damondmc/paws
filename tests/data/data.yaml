@@ -2,14 +2,12 @@
 sft_source: TEST_SFTS
 sft_dir: /replaced/sfts
 detectors: [H1, L1]
-ref_time: 1395617439
+ref_time: 1400000000
 f0_band: 0.025
 
 target:
   name: TestTarget
-  age: 300  # years
-  alpha: 4.6498506327882163
-  delta: -0.5062820546075105
+  alpha: 1.5
+  delta: -0.5
   dalpha: 0
   ddelta: 0
-  radius: 0.0375

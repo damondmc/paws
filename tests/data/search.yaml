@@ -3,11 +3,7 @@ semi_mm: 0.2
 coh_mm: 0.1
 cluster_n_spacing: 10.0
 
-spindown:
-  nc_min: 2.0
-  nc_max: 7.0
-  # (frequency [Hz], age [years]) knots: 300 years up to 199 Hz, then 0.5 years more per Hz
-  age_knots: [[199, 300], [399, 400]]
+spindown_model: spindown.py
 
 stages:
   search-0:
@@ -36,6 +32,5 @@ stages:
     upperlimit: false
     keep: 2000
     thresholds: null
-    reuse: []
     cluster: true
     separate_saturated: true

@@ -6,7 +6,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from paws.settings import Environment, Followup, Search, Settings, Spindown, Stage
+from paws.params.models import PowerLawModel
+from paws.settings import Environment, Followup, Search, Settings, Stage
 
 REAL_CONFIG_DIR = Path(
     os.environ.get("PAWS_CONFIG_DIR", Path(__file__).parents[2] / "config")
@@ -60,6 +61,23 @@ def test_missing_field_rejected(config_dir):
         Search.model_validate(raw)
 
 
+def test_null_weave_is_the_container_weave(config_dir):
+    raw = load(config_dir, "environment.yaml")
+    executables = Environment.model_validate(raw).executables
+    assert executables.weave_path == raw["executables"]["weave"]
+    raw["executables"]["weave"] = None
+    executables = Environment.model_validate(raw).executables
+    assert executables.weave_path == "/opt/paws/.venv/bin/lalpulsar_Weave"
+
+
+def test_null_weave_needs_an_image_on_every_stage(config_dir):
+    raw = load(config_dir, "environment.yaml")
+    raw["executables"]["weave"] = None
+    save(config_dir, "environment.yaml", raw)
+    with pytest.raises(ValueError, match="search-0 has no image"):
+        Settings(config_dir)
+
+
 def test_missing_prev_rejected(config_dir):
     raw = load(config_dir, "followup.yaml")
     raw["stages"]["followup-2"]["prev"] = "followup-9"
@@ -74,14 +92,14 @@ def test_initial_search_in_search_yaml_only(config_dir):
     with pytest.raises(ValidationError, match="prev"):
         Search.model_validate(raw)
     raw = load(config_dir, "followup.yaml")
-    raw["stages"]["followup-old-1"]["prev"] = None
+    raw["stages"]["followup-1"]["prev"] = None
     with pytest.raises(ValidationError):
         Followup.model_validate(raw)
 
 
 def test_stage_in_both_files_rejected(config_dir):
     raw = load(config_dir, "search.yaml")
-    raw["stages"]["followup-old-1"] = dict(raw["stages"]["search-0"])
+    raw["stages"]["followup-1"] = dict(raw["stages"]["search-0"])
     save(config_dir, "search.yaml", raw)
     with pytest.raises(ValueError, match="both"):
         Settings(config_dir)
@@ -94,16 +112,8 @@ def test_thresholded_followup_keeps_loudest_only(config_dir):
         Stage.model_validate(raw)
 
 
-def test_injection_stage_cannot_reuse(config_dir):
-    raw = stage_fields(config_dir, "injections-1")
-    Stage.model_validate(raw)
-    raw["reuse"] = ["followup-old-1"]
-    with pytest.raises(ValidationError):
-        Stage.model_validate(raw)
-
-
 def test_upperlimit_needs_injection(config_dir):
-    raw = stage_fields(config_dir, "followup-old-1")
+    raw = stage_fields(config_dir, "followup-1")
     raw["upperlimit"] = True
     with pytest.raises(ValidationError, match="injection"):
         Stage.model_validate(raw)
@@ -122,15 +132,6 @@ def test_injection_followup_takes_the_seeds_injections(config_dir):
     raw["stages"]["injections-1"]["injection"]["n_inj"] = 5
     save(config_dir, "followup.yaml", raw)
     with pytest.raises(ValueError, match="null"):
-        Settings(config_dir)
-
-
-def test_reuse_needs_same_grid(config_dir):
-    raw = load(config_dir, "followup.yaml")
-    # t10, 1 sky point for a t20, 3-point stage
-    raw["stages"]["followup-2"]["reuse"] = ["followup-old-1"]
-    save(config_dir, "followup.yaml", raw)
-    with pytest.raises(ValueError, match="reuse"):
         Settings(config_dir)
 
 
@@ -171,14 +172,24 @@ def test_no_config_dir():
 def test_tau_matches_formula(settings, freq):
     # the knots [[199, 300], [399, 400]] reproduce 300 years below 200 Hz, then 0.5 years more per Hz
     expected = 86400 * 365.25 * (300 if freq < 200 else 300 + (freq - 199) * 0.5)
-    assert settings.search.spindown.tau(freq) == expected
+    model = settings.spindown_model(freq)
+    assert isinstance(model, PowerLawModel)
+    assert (model.nc_min, model.nc_max, model.tau) == (2, 7, expected)
 
 
-def test_spindown_age_knots():
-    constant = Spindown(nc_min=2, nc_max=7, age_knots=[[100, 300]])
-    assert constant.age(20) == constant.age(399) == 300
-    with pytest.raises(ValidationError, match="increasing"):
-        Spindown(nc_min=2, nc_max=7, age_knots=[[200, 300], [100, 400]])
+def test_spindown_model_script_checked(config_dir):
+    raw = load(config_dir, "search.yaml")
+    raw["spindown_model"] = "missing.py"
+    save(config_dir, "search.yaml", raw)
+    with pytest.raises(ValueError, match="not found"):
+        Settings(config_dir)
+    raw["spindown_model"] = "spindown.py"
+    save(config_dir, "search.yaml", raw)
+    (config_dir / "spindown.py").write_text(
+        "def spindown_model(freq):\n    return freq\n"
+    )
+    with pytest.raises(TypeError, match="not a paws.params.models.SpindownModel"):
+        Settings(config_dir).spindown_model(100)
 
 
 def test_taskname(settings):
@@ -196,5 +207,5 @@ def test_osdf_urls(settings):
     )
     assert settings.job_config_urls() == tuple(
         f"osdf://{osdf}/config/{name}"
-        for name in ("environment.yaml", "data.yaml", "search.yaml")
+        for name in ("environment.yaml", "data.yaml", "search.yaml", "spindown.py")
     )

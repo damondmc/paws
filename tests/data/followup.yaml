@@ -1,4 +1,4 @@
-# Test follow-up: injection stages, a reuse source and a two-stage follow-up chain.
+# Test follow-up: injection stages and a two-stage follow-up chain.
 # Every field of a stage is explicit; the x- anchors only group fields that stages share (in a `<<:` list the
 # first mapping wins, so *base comes last).
 n_spacing: 15.0
@@ -33,7 +33,6 @@ x-base: &base
   upperlimit: false
   keep: 1
   thresholds: null
-  reuse: []
   cluster: true
   separate_saturated: false
 
@@ -60,15 +59,10 @@ stages:
     prev: injections-1
     injection: *seed_injections
 
-  followup-old-1:  # an earlier run whose Weave results followup-1 reuses
-    <<: [*t10, *base]
-    prev: search-0
-
   followup-1:
     <<: [*t10, *base]
     prev: search-0
     thresholds: test-t10
-    reuse: [followup-old-1]
 
   followup-2:
     <<: [*grid, *t20, *base]

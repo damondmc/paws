@@ -6,6 +6,4 @@ acc_group: ligo.test.group
 
 executables:
   weave: /opt/lalsuite/bin/lalpulsar_Weave
-  split_sfts: null
-  estimate_uls: null
   weave_setup: null
