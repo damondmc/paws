@@ -1,6 +1,6 @@
 """Search parameter tables of the initial search: the f0 / f1dot / f2dot (/ f3dot / f4dot) cells of each band."""
 
-from typing import Optional, Union
+from typing import Optional
 
 import numpy as np
 from astropy.io import fits
@@ -9,38 +9,27 @@ from tqdm import tqdm
 
 from paws.definitions import phase_param_name
 
-from .models import PowerLawModel, UniformModel
+from .models import SpindownModel
 
 
 class SearchParamGenerator:
-    """
-    Generate initial search parameters for a given sky location and frequency range.
-    Uses the provided model (PowerLaw or Uniform) to determine parameter boundaries.
-    """
+    """Parameter tables of the initial search: the sky position and the cells of each band, from the spin-down
+    ranges of `model` up to spin-down order freq_deriv_order."""
 
-    def __init__(
-        self, model: Union[PowerLawModel, UniformModel], freq_deriv_order: int = 2
-    ) -> None:
-        """
-        Initialize the generator.
-
-        Parameters:
-        - model (object): Instance of PowerLawModel or UniformModel (REQUIRED).
-        - freq_deriv_order (int): Order of frequency derivatives (default: 2).
-        """
+    def __init__(self, model: SpindownModel, freq_deriv_order: int = 2) -> None:
         self.freq_deriv_order = freq_deriv_order
         self.freq_param_name, self.freq_deriv_param_name = phase_param_name(
             freq_deriv_order
         )
         self.model = model
 
-        # Initialize attributes that are set later via generate_parameters
+        # Initialize attributes that are set later via generate_search_ranges
         self.alpha: Optional[float] = None
         self.dalpha: Optional[float] = None
         self.delta: Optional[float] = None
         self.ddelta: Optional[float] = None
 
-    def generate_parameter_table(
+    def generate_band_search_ranges(
         self,
         freq: float,
         df: float,
@@ -50,12 +39,8 @@ class SearchParamGenerator:
         n_f4: int = 1,
         bandwidth: float = 1.0,
     ) -> fits.BinTableHDU:
-        """
-        Generate a parameter table for a specific frequency chunk.
-
-        Parameters:
-        - bandwidth (float): The frequency range this table covers (default 1.0 Hz).
-        """
+        """The cells of [freq, freq + bandwidth): n_f0 sub-bands of width df, each split into n_f1 x n_f2 (x n_f3 x
+        n_f4) spin-down cells over the model's ranges."""
         # Calculate number of steps (sub-bands) in this file
         # Use round() to avoid floating point truncation errors (e.g., 0.299999 / 0.1)
         n_f0 = int(np.round(bandwidth / df))
@@ -68,77 +53,53 @@ class SearchParamGenerator:
         data = np.recarray((n,), dtype=dtype_list)
 
         for i in range(n_f0):
-            f0 = freq + i * df
-
-            # Handle f0 range
-            f0_min, _, _ = self.model.f0_broad_range(f0, df)
+            f0_min = freq + i * df
+            # the model takes one frequency per point: one point here
+            f0 = np.array([f0_min], dtype=float)
 
             for j in range(n_f1):
                 # 1. Get f1 range
-                if isinstance(self.model, PowerLawModel):
-                    _f1_min, _, _f1_band = self.model.f1_broad_range(f0, df)
-                else:
-                    _f1_min, _, _f1_band = self.model.f1_broad_range()
+                _f1_min, _f1_max = self.model.f1_range(f0, df)
+                _f1_band = _f1_max - _f1_min
 
                 f1_band = _f1_band / n_f1
                 f1_min = _f1_min + j * f1_band
                 f1_max = f1_min + f1_band
 
-                # Handling numerical edge cases for PowerLawModel
-                if j == n_f1 - 1 and isinstance(self.model, PowerLawModel):
-                    f1_max = 0.0
-                    f1_band = 0.0 - f1_min
+                # the last cell ends exactly at the range edge
+                if j == n_f1 - 1:
+                    f1_max = _f1_max
+                    f1_band = f1_max - f1_min
 
                 for k in range(n_f2):
                     # 2. Get f2 range
-                    if isinstance(self.model, PowerLawModel):
-                        _f2_min, _, _f2_band = self.model.f2_broad_range(
-                            f0, df, f1_min, f1_max
-                        )
-                    else:
-                        _f2_min, _, _f2_band = self.model.f2_broad_range()
+                    _f2_min, _f2_max = self.model.f2_range(f0, df, f1_min, f1_max)
+                    _f2_band = _f2_max - _f2_min
 
                     f2_band = _f2_band / n_f2
                     f2_min = _f2_min + k * f2_band
-                    f2_max = f2_min + f2_band
 
-                    if (
-                        j == (n_f1 - 1)
-                        and k == 0
-                        and isinstance(self.model, PowerLawModel)
-                    ):
-                        f2_min = 0.0
-                        f2_band = f2_max
-
-                    # --- F3 Loop ---
+                    # --- f3 Loop ---
                     for p in range(n_f3):
                         if self.freq_deriv_order >= 3:
-                            if isinstance(self.model, PowerLawModel):
-                                _f3_min, _, _f3_band = self.model.f3_broad_range(
-                                    f0, df, f1_min, f1_max
-                                )
-                            else:
-                                _f3_min, _, _f3_band = self.model.f3_broad_range()
+                            _f3_min, _f3_max = self.model.f3_range(
+                                f0, df, f1_min, f1_max
+                            )
+                            _f3_band = _f3_max - _f3_min
 
                             f3_band = _f3_band / n_f3
                             f3_min = _f3_min + p * f3_band
-                        else:
-                            f3_min, f3_band = 0.0, 0.0
 
-                        # --- F4 Loop ---
+                        # --- f4 Loop ---
                         for m in range(n_f4):
                             if self.freq_deriv_order >= 4:
-                                if isinstance(self.model, PowerLawModel):
-                                    _f4_min, _, _f4_band = self.model.f4_broad_range(
-                                        f0, df, f1_min, f1_max
-                                    )
-                                else:
-                                    _f4_min, _, _f4_band = self.model.f4_broad_range()
+                                _f4_min, _f4_max = self.model.f4_range(
+                                    f0, df, f1_min, f1_max
+                                )
+                                _f4_band = _f4_max - _f4_min
 
                                 f4_band = _f4_band / n_f4
                                 f4_min = _f4_min + m * f4_band
-                            else:
-                                f4_min, f4_band = 0.0, 0.0
 
                             # Calculate Index
                             idx = (
@@ -151,18 +112,24 @@ class SearchParamGenerator:
 
                             # Assign Data
                             data[idx]["freq"], data[idx]["df"] = f0_min, df
-                            data[idx]["f1dot"], data[idx]["df1dot"] = f1_min, f1_band
-                            data[idx]["f2dot"], data[idx]["df2dot"] = f2_min, f2_band
+                            data[idx]["f1dot"], data[idx]["df1dot"] = (
+                                f1_min[0],
+                                f1_band[0],
+                            )
+                            data[idx]["f2dot"], data[idx]["df2dot"] = (
+                                f2_min[0],
+                                f2_band[0],
+                            )
 
                             if self.freq_deriv_order >= 3:
                                 data[idx]["f3dot"], data[idx]["df3dot"] = (
-                                    f3_min,
-                                    f3_band,
+                                    f3_min[0],
+                                    f3_band[0],
                                 )
                             if self.freq_deriv_order >= 4:
                                 data[idx]["f4dot"], data[idx]["df4dot"] = (
-                                    f4_min,
-                                    f4_band,
+                                    f4_min[0],
+                                    f4_band[0],
                                 )
 
         data = Table(data)
@@ -174,7 +141,7 @@ class SearchParamGenerator:
         data.add_column(self.ddelta * np.ones(n), name="ddelta")
         return fits.BinTableHDU(data)
 
-    def generate_parameters(
+    def generate_search_ranges(
         self,
         alpha: float,
         dalpha: float,
@@ -182,21 +149,14 @@ class SearchParamGenerator:
         ddelta: float,
         f0_min: float,
         f0_max: float,
-        file_bandwidth: float = 1.0,
         df: float = 0.02,
         df1: float = 1e-9,
         df2: float = 1e-19,
         df3: Optional[float] = None,
         df4: Optional[float] = None,
     ) -> dict[int, fits.BinTableHDU]:
-        """
-        Generate initial search parameters: {integer start frequency: parameter table} per 1 Hz band.
-
-        Parameters:
-            - f0_min, f0_max (float): Frequency range (e.g., 31.5 to 31.8).
-            - file_bandwidth (float): The size of each output file/table in Hz (default 1.0).
-            - df (float, optional): Resolution for f0. Defaults to self.f0_band if None.
-        """
+        """{1 Hz band: its cell table} over [f0_min, f0_max) at the sky position; df, df1, df2 (df3, df4) are the
+        cell widths, the spin-down counts follow from the model's ranges at each band."""
         self.alpha = alpha
         self.dalpha = dalpha
         self.delta = delta
@@ -223,40 +183,26 @@ class SearchParamGenerator:
             if chunk_bw < df / 2.0:
                 break
 
-            # 3. Calculate N segments based on current_freq (physics model varies with freq)
-            if isinstance(self.model, PowerLawModel):
-                n_f1 = self.model.get_n_f1(current_freq, df, df1=df1)
-                n_f2 = self.model.get_n_f2(current_freq, df, df2=df2)
-            else:
-                n_f1 = self.model.get_n_f1(df1=df1)
-                n_f2 = self.model.get_n_f2(df2=df2)
+            # 3. Calculate N segments based on current_freq (the ranges may vary with freq)
+            f0 = np.array([current_freq], dtype=float)
+            n_f1 = int(self.model.n_f1_ranges(f0, df, df1)[0])
+            n_f2 = int(self.model.n_f2_ranges(f0, df, df2)[0])
+            f1_min, f1_max = self.model.f1_range(f0, df)
 
             # F3 Logic
             n_f3 = 1
             if self.freq_deriv_order >= 3 and df3 is not None:
-                if isinstance(self.model, PowerLawModel):
-                    f1_min, f1_max, _ = self.model.f1_broad_range(current_freq, df)
-                    _, _, width_f3 = self.model.f3_broad_range(
-                        current_freq, df, f1_min, f1_max
-                    )
-                else:
-                    _, _, width_f3 = self.model.f3_broad_range()
-                n_f3 = int(np.ceil(width_f3 / df3))
+                f3_min, f3_max = self.model.f3_range(f0, df, f1_min, f1_max)
+                n_f3 = int(np.ceil((f3_max - f3_min)[0] / df3))
 
             # F4 Logic
             n_f4 = 1
             if self.freq_deriv_order >= 4 and df4 is not None:
-                if isinstance(self.model, PowerLawModel):
-                    f1_min, f1_max, _ = self.model.f1_broad_range(current_freq, df)
-                    _, _, width_f4 = self.model.f4_broad_range(
-                        current_freq, df, f1_min, f1_max
-                    )
-                else:
-                    _, _, width_f4 = self.model.f4_broad_range()
-                n_f4 = int(np.ceil(width_f4 / df4))
+                f4_min, f4_max = self.model.f4_range(f0, df, f1_min, f1_max)
+                n_f4 = int(np.ceil((f4_max - f4_min)[0] / df4))
 
             # 4. Generate table with calculated chunk bandwidth
-            table = self.generate_parameter_table(
+            table = self.generate_band_search_ranges(
                 current_freq, df, n_f1, n_f2, n_f3, n_f4, bandwidth=chunk_bw
             )
 

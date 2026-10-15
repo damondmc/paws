@@ -8,17 +8,17 @@ from astropy.table import Table
 from jaxtyping import Shaped
 
 from paws.definitions import phase_param_name
-from paws.params.models import PowerLawModel
+from paws.params.models import SpindownModel
 from paws.params.sky import sky_hex_offsets
 
 
-class FollowUpParamGenerator:
-    def __init__(self, model: PowerLawModel) -> None:
+class FollowupParamGenerator:
+    def __init__(self, model: SpindownModel) -> None:
         """
-        Initialize the FollowUpParams generator.
+        Initialize the follow-up parameter generator.
 
         Parameters:
-        - model (object): Instance of PowerLawModel (REQUIRED).
+        - model (object): Instance of SpindownModel (REQUIRED).
         """
         self.model = model
 
@@ -28,7 +28,7 @@ class FollowUpParamGenerator:
         self.delta: Optional[float] = None
         self.ddelta: Optional[float] = None
 
-    def generate_parameter_table(
+    def generate_seed_search_ranges(
         self,
         data: Shaped[np.ndarray, " n_seed"],
         old_freq_deriv_order: int,
@@ -91,24 +91,24 @@ class FollowUpParamGenerator:
         ):
             if freq_name == "f3dot":
                 # Calculate broad ranges based on current f1/f2 values
-                f3_min, _, f3_band = self.model.f3_broad_range(
+                f3_min, f3_max = self.model.f3_range(
                     data["freq"],
                     spacing["df"],
                     data["f1dot"],
                     data["f1dot"] + spacing["df1dot"],
                 )
                 data.add_column(f3_min, name=freq_name)
-                data.add_column(f3_band, name=freq_deriv_name)
+                data.add_column(f3_max - f3_min, name=freq_deriv_name)
 
             elif freq_name == "f4dot":
-                f4_min, _, f4_band = self.model.f4_broad_range(
+                f4_min, f4_max = self.model.f4_range(
                     data["freq"],
                     spacing["df"],
                     data["f1dot"],
                     data["f1dot"] + spacing["df1dot"],
                 )
                 data.add_column(f4_min, name=freq_name)
-                data.add_column(f4_band, name=freq_deriv_name)
+                data.add_column(f4_max - f4_min, name=freq_deriv_name)
 
         # Sky tiling: replicate each outlier row for every hex-grid sky point.
         # Ordering: outlier_0/sky_0, outlier_0/sky_1, ..., outlier_1/sky_0, ...
@@ -125,7 +125,7 @@ class FollowUpParamGenerator:
 
         return fits.BinTableHDU(data=data)
 
-    def generate_parameter(
+    def generate_search_ranges(
         self,
         alpha: float,
         dalpha: float,
@@ -153,7 +153,7 @@ class FollowUpParamGenerator:
             # You might want to raise an actual Exception here:
             # raise ValueError("Frequency derivative order cannot be larger than 4")
 
-        params = self.generate_parameter_table(
+        params = self.generate_seed_search_ranges(
             data,
             old_freq_deriv_order,
             new_freq_deriv_order,

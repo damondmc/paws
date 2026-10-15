@@ -10,11 +10,9 @@ from jaxtyping import Float, Shaped
 from tqdm import tqdm
 
 from paws.fits_io import outlier_file_spacing
-from paws.params.followup import FollowUpParamGenerator
+from paws.params.followup import FollowupParamGenerator
 from paws.params.injections import InjectionParamGenerator
-from paws.pipeline import reuse
 from paws.pipeline.context import StageContext
-from paws.pipeline.seed_plan import default_seed_plan, save_seed_plans
 from paws.pipeline.seeds import read_seed_rows, seed_outlier_file, selected_seed_rows
 from paws.settings import Settings
 
@@ -52,7 +50,7 @@ def dag_injection(context: StageContext, freq: int) -> Optional[Path]:
         ref_time=context.settings.data.ref_time,
         f0_band=context.settings.data.f0_band,
     )
-    search_params, injection_params = generator.generate_parameters(
+    search_params, injection_params = generator.generate_injections_and_search_ranges(
         alpha=target.alpha,
         dalpha=target.dalpha,
         delta=target.delta,
@@ -83,7 +81,7 @@ def followup_params(
     """Search ranges around the seeds (sky offsets are added per job by the workflow manager)."""
     stage, target, prev_stage = context.stage, context.target, context.prev_stage
     seed_file = seed_outlier_file(context.settings, context.paths, stage, freq)
-    return FollowUpParamGenerator(context.spindown_model(freq)).generate_parameter(
+    return FollowupParamGenerator(context.spindown_model(freq)).generate_search_ranges(
         alpha=target.alpha,
         dalpha=target.dalpha,
         delta=target.delta,
@@ -100,24 +98,13 @@ def followup_params(
 
 
 def dag_followup(context: StageContext, freq: int) -> Optional[Path]:
-    """Real candidates: Weave jobs for the seeds of the band's seed plan that run in this stage."""
+    """Real candidates: one Weave run (n_sky jobs) per seed of the band, in seed order."""
     stage = context.stage
     seed_rows = selected_seed_rows(context.settings, context.paths, stage, freq)
     if seed_rows is None:
         return None
-    if stage.reuse:
-        plan = reuse.build_seed_plan(
-            context.settings, context.paths, stage, freq, seed_rows
-        )
-    else:
-        plan = default_seed_plan(stage, seed_rows)
-    context.seed_plans[freq] = plan
-    new_seeds = plan.own_runs(stage.name)
-    context.seed_counts["seeds"] += len(seed_rows)
-    context.seed_counts["new"] += new_seeds.size
-    if new_seeds.size == 0:
-        return None
-    params = followup_params(context, freq, seed_rows[new_seeds])
+    context.n_seeds += len(seed_rows)
+    params = followup_params(context, freq, seed_rows)
     return context.make_weave_dag(
         freq, params.data, sky_offsets=context.settings.sky_offsets(stage)
     )
@@ -146,11 +133,14 @@ def dag_upperlimit(context: StageContext, freq: int) -> Optional[Path]:
     search_file, non_saturated_bands = non_saturated_search_file(context, freq)
     if search_file is None:
         return None
-    environment_url, data_url, search_url = context.settings.job_config_urls()
+    environment_url, data_url, search_url, spindown_url = (
+        context.settings.job_config_urls()
+    )
     return context.workflow_manager.make_upperlimit_dag(
         environment_url,
         data_url,
         search_url,
+        spindown_url,
         context.taskname(freq),
         freq,
         stage.name,
@@ -228,13 +218,10 @@ def make_stage_dags(
             dag_list.write(
                 f"{context.workflow_manager.make_osdf_cleanup_dag(stage.name)}\n"
             )
-    if context.seed_plans:
-        save_seed_plans(settings, stage, context.seed_plans)
-        n_seeds, n_new = context.seed_counts["seeds"], context.seed_counts["new"]
+    if context.n_seeds:
         print(
-            f"{stage.name}: {n_seeds:,d} seeds, {n_seeds - n_new:,d} reuse earlier results, {n_new:,d} new "
-            f"({n_new * stage.n_sky:,d} Weave runs)"
+            f"{stage.name}: {context.n_seeds:,d} seeds ({context.n_seeds * stage.n_sky:,d} Weave runs)"
         )
-    elif skipped_bands:
+    if skipped_bands:
         print(f"skipped bands: {skipped_bands}")
     print(f"DAG list: {list_path}")

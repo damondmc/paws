@@ -13,7 +13,6 @@ from paws.analysis.sigmoid import SigmoidFitter
 from paws.definitions import phase_param_name
 from paws.jobs.weave_runner import determine_efficiency
 from paws.params.injections import InjectionParamGenerator
-from paws.params.models import PowerLawModel
 from paws.settings import FixedSettings
 
 # Configure Logging
@@ -140,7 +139,7 @@ def main() -> None:
     settings = FixedSettings(args.environment_file, args.data_file, args.search_file)
     target = settings.target
 
-    weave_exe = "/opt/paws/.venv/bin/lalpulsar_Weave"  # Weave of the container image
+    weave_exe = settings.environment.executables.weave_path
 
     if args.work_in_local_dir:
         metric_file = Path(metric_file).name
@@ -160,30 +159,29 @@ def main() -> None:
     f0_band = settings.data.f0_band
 
     # 2. Initialize Managers
-    spindown = settings.search.spindown
-    model = PowerLawModel(
-        nc_min=spindown.nc_min, nc_max=spindown.nc_max, tau=spindown.tau(freq)
-    )
+    model = settings.spindown_model(freq)
     injection_generator = InjectionParamGenerator(
         model=model, ref_time=ref_time, f0_band=f0_band
     )
 
-    search_data, injection_data = injection_generator.generate_parameters(
-        alpha=target.alpha,
-        dalpha=target.dalpha,
-        delta=target.delta,
-        ddelta=target.ddelta,
-        non_sat_bands=non_sat_bands,
-        spacing=df_grid,
-        h0=1.0,
-        freq=freq,
-        n_inj=n_inj,
-        n_spacing=args.n_spacing,
-        inj_freq_deriv_order=inj_freq_deriv_order,
-        freq_deriv_order=freq_deriv_order,
-        sky_radius=sky_radius,
-        spacing_alpha=spacing_alpha,
-        spacing_delta=spacing_delta,
+    search_data, injection_data = (
+        injection_generator.generate_injections_and_search_ranges(
+            alpha=target.alpha,
+            dalpha=target.dalpha,
+            delta=target.delta,
+            ddelta=target.ddelta,
+            non_sat_bands=non_sat_bands,
+            spacing=df_grid,
+            h0=1.0,
+            freq=freq,
+            n_inj=n_inj,
+            n_spacing=args.n_spacing,
+            inj_freq_deriv_order=inj_freq_deriv_order,
+            freq_deriv_order=freq_deriv_order,
+            sky_radius=sky_radius,
+            spacing_alpha=spacing_alpha,
+            spacing_delta=spacing_delta,
+        )
     )
 
     # n_sky: number of sky-point jobs per injection (1 if no tiling)

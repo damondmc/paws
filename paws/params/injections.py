@@ -8,20 +8,20 @@ from astropy.table import Table
 from jaxtyping import Float, Shaped
 
 from paws.definitions import ext_param_name, phase_param_name
-from paws.params.models import PowerLawModel
-from paws.params.sky import sky_hex_offsets, sky_sampler
+from paws.params.models import SpindownModel
+from paws.params.sky import sample_sky_positions, sky_hex_offsets
 
 
 class InjectionParamGenerator:
     def __init__(
-        self, model: PowerLawModel, ref_time: float, f0_band: float = 0.1
+        self, model: SpindownModel, ref_time: float, f0_band: float = 0.1
     ) -> None:
         self.model = model
         self.ref_time = ref_time
         self.f0_band = f0_band
         self.inj_col_names = ext_param_name()
 
-    def get_f0_from_non_sat_bands(
+    def draw_f0_in_non_saturated_bands(
         self, non_sat_bands: Float[np.ndarray, " n_subband"], n_inj: int
     ) -> Float[np.ndarray, " n_injection"]:
         """Randomly draws f0 values from the available non-saturated bands."""
@@ -36,7 +36,7 @@ class InjectionParamGenerator:
         f0 = selected_bands + np.random.uniform(0, self.f0_band, n_inj)
         return f0
 
-    def generate_injection_table(
+    def generate_injections(
         self,
         alpha: float,
         delta: float,
@@ -58,7 +58,7 @@ class InjectionParamGenerator:
         inj_data = Table(np.zeros((n_inj, len(col_names))), names=col_names)
 
         # 1. Sky Location
-        alpha, delta = sky_sampler(alpha, delta, sky_radius, n_inj)
+        alpha, delta = sample_sky_positions(alpha, delta, sky_radius, n_inj)
         inj_data["Alpha"] = alpha
         inj_data["Delta"] = delta
 
@@ -71,16 +71,16 @@ class InjectionParamGenerator:
         inj_data["aCross"] = h0 * cos_i
 
         # 3. Frequency Evolution
-        f0 = self.get_f0_from_non_sat_bands(non_sat_bands, n_inj)
+        f0 = self.draw_f0_in_non_saturated_bands(non_sat_bands, n_inj)
         inj_data["Freq"] = f0
 
         if inj_freq_deriv_order >= 1:
-            f1_min, f1_max, _ = self.model.f1_broad_range(f0, 0)
+            f1_min, f1_max = self.model.f1_range(f0, 0)
             f1 = np.random.uniform(f1_min, f1_max)
             inj_data["f1dot"] = f1
 
         if inj_freq_deriv_order >= 2:
-            f2_min, f2_max, _ = self.model.f2_broad_range(f0, 0, f1, f1)
+            f2_min, f2_max = self.model.f2_range(f0, 0, f1, f1)
             f2 = np.random.uniform(f2_min, f2_max)
             inj_data["f2dot"] = f2
 
@@ -92,7 +92,7 @@ class InjectionParamGenerator:
 
         return fits.BinTableHDU(inj_data)
 
-    def generate_search_range_table(
+    def generate_injection_search_ranges(
         self,
         alpha: float,
         dalpha: float,
@@ -165,7 +165,7 @@ class InjectionParamGenerator:
 
         return fits.BinTableHDU(search_range)
 
-    def generate_parameters(
+    def generate_injections_and_search_ranges(
         self,
         alpha: float,
         dalpha: float,
@@ -198,12 +198,12 @@ class InjectionParamGenerator:
             print("Error: Injection frequency derivative order larger than 4.")
 
         # 1. Generate Injection Table (n_inj rows)
-        ip_hdu = self.generate_injection_table(
+        ip_hdu = self.generate_injections(
             alpha, delta, non_sat_bands, h0, n_inj, inj_freq_deriv_order, sky_radius
         )
 
         # 2. Generate Search Range Table (n_inj * n_sky rows when sky_layers > 0)
-        sp_hdu = self.generate_search_range_table(
+        sp_hdu = self.generate_injection_search_ranges(
             alpha,
             dalpha,
             delta,

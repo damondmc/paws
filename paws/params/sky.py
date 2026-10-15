@@ -6,7 +6,7 @@ import numpy as np
 from jaxtyping import Float
 
 
-def sky_sampler(
+def sample_sky_positions(
     target_ra: float, target_dec: float, sky_radius: float, n_samples: int
 ) -> tuple[Float[np.ndarray, " n_sample"], Float[np.ndarray, " n_sample"]]:
     """(alpha, delta) of n_samples sky locations uniform in a circular cap of radius sky_radius (radians) around

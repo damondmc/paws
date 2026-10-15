@@ -1,4 +1,7 @@
-"""Names of the phase parameters, the injection parameters and the tasks."""
+"""Names of the phase parameters, the injection parameters and the tasks; the time constants."""
+
+SECONDS_PER_DAY = 86400
+SECONDS_PER_YEAR = 365.25 * SECONDS_PER_DAY
 
 
 def phase_param_name(order: int) -> tuple[list[str], list[str]]:

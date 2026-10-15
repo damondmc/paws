@@ -29,11 +29,9 @@ class PathManager:
 
     @property
     def weave_executable(self) -> str:
-        return self.settings.environment.executables.weave
+        return self.settings.environment.executables.weave_path
 
-    # ---------------------------------------------------------
-    # Input Data (SFTs)
-    # ---------------------------------------------------------
+    # -------------------------- input data (SFTs) ---------------------------
 
     def to_osdf_url(self, path: Union[str, Path]) -> str:
         """
@@ -54,9 +52,7 @@ class PathManager:
             for path in self.sft_file_path(freq, detector).glob("*.sft")
         ]
 
-    # ---------------------------------------------------------
-    # Condor & DAG Management
-    # ---------------------------------------------------------
+    # ------------------------- Condor and DAG files -------------------------
 
     def dag_group_file(self, f_min: int, f_max: int, stage: str) -> Path:
         """Path to the text file listing all DAGs for a band."""
@@ -110,9 +106,7 @@ class PathManager:
 
         return [str(out), str(err), str(log)]
 
-    # ---------------------------------------------------------
-    # Weave Outputs & Analysis
-    # ---------------------------------------------------------
+    # ----------------------- Weave results and outliers -----------------------
 
     def weave_output_file(
         self, freq: int, taskname: str, job_index: int, stage: str

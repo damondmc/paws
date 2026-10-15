@@ -30,7 +30,7 @@ def build_parser() -> argparse.ArgumentParser:
         "dag",
         help="Weave DAGs of a stage -> dagFiles/ list to submit",
         description="Weave DAGs of a stage, one per 1 Hz band, and the DAG list to submit "
-        "(dagFiles/<stage>_<target>_dag<bands>Hz.txt). Follow-ups also save their seed plans.",
+        "(dagFiles/<stage>_<target>_dag<bands>Hz.txt).",
     )
     dag_parser.add_argument("stage", help="stage name in search.yaml or followup.yaml")
     dag_parser.add_argument(
