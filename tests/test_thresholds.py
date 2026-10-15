@@ -4,13 +4,12 @@ import yaml
 from astropy.io import fits
 from pydantic import ValidationError
 
+from paws.pipeline.calibrate import calibrate, write_threshold_file
 from paws.pipeline.noise_weights import _write_rows, log10_noise_ratio
-from paws.pipeline.stage_thresholds import (
-    calibrate,
+from paws.pipeline.thresholds import (
     record_threshold_file,
     stage_thresholds,
     threshold_record_path,
-    write_threshold_file,
 )
 from paws.settings import ThresholdBand, ThresholdFile
 
@@ -61,10 +60,10 @@ def test_stage_thresholds_from_file(settings):
     thresholds = stage_thresholds(settings, settings.stage("followup-1"))
     np.testing.assert_array_equal(thresholds.band_edges, [20, 100, 400])
     np.testing.assert_allclose(
-        thresholds.at("excess_ratio", np.array([25, 150])), [1.2345, 1.5]
+        thresholds.in_band("excess_ratio", np.array([25, 150])), [1.2345, 1.5]
     )
-    np.testing.assert_allclose(thresholds.at("h1_l1_window", 150), [-2.0, 2.0])
-    np.testing.assert_allclose(thresholds.at("seed_h1_l1_window", 50), [-3.0, 3.0])
+    np.testing.assert_allclose(thresholds.in_band("h1_l1_window", 150), [-2.0, 2.0])
+    np.testing.assert_allclose(thresholds.in_band("seed_h1_l1_window", 50), [-3.0, 3.0])
     assert thresholds.growth is None and thresholds.excess_ratio_lowest is None
     assert thresholds.h1_l1_noise_weights is None
 
@@ -115,7 +114,6 @@ def injection_outlier_file(paths, settings, stage_name, freq, rows):
         stage.taskname(settings.target, freq),
         stage.name,
         cluster=True,
-        location="home",
     )
     path.parent.mkdir(parents=True, exist_ok=True)
     fits.HDUList(
@@ -160,8 +158,8 @@ def test_calibrate_from_injection_outliers(settings, paths):
 
     write_threshold_file(settings, "test-t10")
     thresholds = stage_thresholds(settings, settings.stage("followup-1"))
-    assert thresholds.at("excess_ratio", 50) == 2.01
-    np.testing.assert_allclose(thresholds.at("seed_h1_l1_window", 350), [0.0, 0.0])
+    assert thresholds.in_band("excess_ratio", 50) == 2.01
+    np.testing.assert_allclose(thresholds.in_band("seed_h1_l1_window", 350), [0.0, 0.0])
 
 
 def test_record_threshold_file(settings):
