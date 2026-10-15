@@ -1,7 +1,9 @@
 """Sigmoid fit of the detection efficiency against the injected strain, for the h95 upper limit."""
 
+import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Optional, Union
+from typing import NamedTuple, Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -10,6 +12,22 @@ from matplotlib.figure import Figure
 from scipy.optimize import curve_fit
 
 from paws.settings import Target
+
+BRACKET_FACTORS = (
+    0.5,
+    0.7,
+    1.0,
+    1.5,
+)  # first strains tried, as factors of the h0 estimate
+
+
+class UpperLimit(NamedTuple):
+    """h95 with its fit uncertainty and the (strain, efficiency) points it was fitted to, in run order."""
+
+    h95: float
+    dh95: float
+    h0: Float[np.ndarray, " n_run"]
+    efficiency: Float[np.ndarray, " n_run"]
 
 
 class SigmoidFitter:
@@ -82,7 +100,12 @@ class SigmoidFitter:
         # Initial guess: steepness=5, midpoint=0 (normalized)
         try:
             self.popt, self.pcov = curve_fit(
-                self.sigmoid, x_norm, p_arr, p0=[5, 0], sigma=err, absolute_sigma=True
+                self.sigmoid,
+                x_norm,
+                p_arr,
+                p0=[5.0, 0.0],
+                sigma=err,
+                absolute_sigma=True,
             )
             return True
         except RuntimeError as e:
@@ -168,3 +191,33 @@ class SigmoidFitter:
             fig.savefig(save_path, dpi=150, bbox_inches="tight")
             plt.close(fig)
         return fig
+
+
+def find_h95(
+    efficiency_at: Callable[[float], float],
+    h0_estimate: float,
+    fitter: SigmoidFitter,
+    tolerance: float = 0.05,
+    max_rounds: int = 20,
+) -> UpperLimit:
+    """h95 from the sigmoid fit of the efficiencies at BRACKET_FACTORS * h0_estimate, adding two strains
+    around h95 per round until its relative uncertainty is within tolerance."""
+    h0_values = [h0_estimate * factor for factor in BRACKET_FACTORS]
+    efficiencies = [efficiency_at(h0) for h0 in h0_values]
+    for _ in range(max_rounds):
+        fitter.fit(np.array(h0_values), np.array(efficiencies))
+        h95, dh95 = fitter.get_h_percentile(0.95)
+        relative = dh95 / h95
+        if not np.isfinite(relative) or h95 <= 0:
+            raise RuntimeError(
+                f"the sigmoid fit does not constrain h95 (h95 = {h95:.3e} +- {dh95:.3e})"
+            )
+        logging.info(f"h95 = {h95:.3e} +- {abs(relative):.2%}")
+        if abs(relative) <= tolerance:
+            return UpperLimit(h95, dh95, np.array(h0_values), np.array(efficiencies))
+        for h0 in (h95 * (1 - relative), h95 * (1 + relative)):
+            h0_values.append(h0)
+            efficiencies.append(efficiency_at(h0))
+    raise RuntimeError(
+        f"h95 did not converge to {tolerance:.0%} in {max_rounds} rounds"
+    )

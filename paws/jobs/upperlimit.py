@@ -3,13 +3,14 @@ import argparse
 import logging
 import sys
 import time
+from itertools import count
 from pathlib import Path
 
 import numpy as np
 from astropy.io import fits
 from jaxtyping import Shaped
 
-from paws.analysis.sigmoid import SigmoidFitter
+from paws.analysis.sigmoid import SigmoidFitter, find_h95
 from paws.definitions import phase_param_name
 from paws.jobs.weave_runner import determine_efficiency
 from paws.params.injections import InjectionParamGenerator
@@ -191,23 +192,10 @@ def main() -> None:
         f"Generated injection and search parameter tables for {n_inj} injections and {n_sky} sky points per injection."
     )
 
-    # 4. Iterative Injection Loop
-    h0_arr, eff_arr = [], []  # h0 and efficiency arrays
-    iter_count = 0
-
-    factors = [0.5, 0.7, 1.0, 1.5]  # Initial spread around estimate
-
-    log_section("EFFICIENCY LOOP START")
-    for factor in factors:
-        current_h0 = h0_est * factor
-        logging.info(f"Testing h0 = {current_h0:.3e}")
-
-        # Scale params
-        scaled_injections = scale_injection(injection_data[str(freq)].data, current_h0)
-
-        loop_t0 = time.time()
-        eff, outlier_file_path = determine_efficiency(
-            taskname=f"{taskname}_{iter_count}",
+    # 4. The efficiency of one injection set at a strain: the Weave runs of run_taskname
+    def run_injections(run_taskname: str, h0: float) -> tuple[float, Path]:
+        return determine_efficiency(
+            taskname=run_taskname,
             stage=stage,
             settings=settings,
             freq=freq,
@@ -220,7 +208,7 @@ def main() -> None:
             extra_stats=extra_stats,
             weave_exe=weave_exe,
             search_data=search_data[str(freq)].data,
-            injection_data=scaled_injections,
+            injection_data=scale_injection(injection_data[str(freq)].data, h0),
             mean2f_th=mean2f_th,
             n_cpu=args.n_cpus,
             cluster=args.cluster,
@@ -228,108 +216,38 @@ def main() -> None:
             save_intermediate=args.save_intermediate,
         )
 
-        logging.info(
-            f"Iteration took {time.time() - loop_t0:.2f}s | Efficiency: {eff:.2%}"
-        )
-        h0_arr.append(current_h0)
-        eff_arr.append(eff)
-        iter_count += 1
+    run_index = count()
 
-    # 5. Sigmoid Fitting & Refinement
+    def efficiency_at(h0: float) -> float:
+        logging.info(f"Testing h0 = {h0:.3e}")
+        run_t0 = time.time()
+        eff, _ = run_injections(f"{taskname}_{next(run_index)}", h0)
+        logging.info(f"Run took {time.time() - run_t0:.2f}s | Efficiency: {eff:.2%}")
+        return eff
+
+    # 5. h95 from the sigmoid fit, then the confirmation run at h95
+    log_section("EFFICIENCY LOOP START")
     fitter = SigmoidFitter(target, n_inj=n_inj, n_amp=1)
-    outlier_file_path = None  # To store final result path
+    limit = find_h95(efficiency_at, h0_est, fitter)
+    h95 = limit.h95
 
-    while True:
-        fitter.fit(np.array(h0_arr), np.array(eff_arr))
-        h95, dh95 = fitter.get_h_percentile(percentile=0.95)
-        dx = dh95 / h95
-
-        logging.info(
-            f"Refinement Step | Current h95: {h95:.3e} | Uncertainty: {dx * 100:.2f}%"
-        )
-
-        # Check convergence
-        if abs(dx) <= 0.05:
-            logging.info(">> Convergence reached (error <= 5%).")
-            break
-
-        # Refine if uncertainty is high
-        logging.warning("Uncertainty too high, adding points near h95...")
-
-        for mult in [1 - dx, 1 + dx]:
-            new_h0 = h95 * mult
-
-            logging.info(f"Testing refinement point h0 = {new_h0:.3e}...")
-
-            scaled_injections = scale_injection(injection_data[str(freq)].data, new_h0)
-
-            eff, outlier_file_path = determine_efficiency(
-                taskname=f"{taskname}_{iter_count}",
-                stage=stage,
-                settings=settings,
-                freq=freq,
-                freq_deriv_order=freq_deriv_order,
-                n_sky=n_sky,
-                num_toplist=num_toplist,
-                n_seg=107,
-                sft_files=sft_files,
-                metric_file=metric_file,
-                extra_stats=extra_stats,
-                weave_exe=weave_exe,
-                search_data=search_data[str(freq)].data,
-                injection_data=scaled_injections,
-                mean2f_th=mean2f_th,
-                n_cpu=args.n_cpus,
-                cluster=args.cluster,
-                work_in_local_dir=args.work_in_local_dir,
-                save_intermediate=args.save_intermediate,
-            )
-
-            h0_arr.append(new_h0)
-            eff_arr.append(eff)
-            iter_count += 1
-
-    # 6. Final Confirmation Run
     logging.info(f"Performing final confirmation run at h95 = {h95:.3e}")
-    scaled_injections = scale_injection(injection_data[str(freq)].data, h95)
-
-    eff, outlier_file_path = determine_efficiency(
-        taskname=taskname,
-        stage=stage,
-        settings=settings,
-        freq=freq,
-        freq_deriv_order=freq_deriv_order,
-        n_sky=n_sky,
-        num_toplist=num_toplist,
-        n_seg=107,
-        sft_files=sft_files,
-        metric_file=metric_file,
-        extra_stats=extra_stats,
-        weave_exe=weave_exe,
-        search_data=search_data[str(freq)].data,
-        injection_data=scaled_injections,
-        mean2f_th=mean2f_th,
-        n_cpu=args.n_cpus,
-        cluster=args.cluster,
-        work_in_local_dir=args.work_in_local_dir,
-        save_intermediate=args.save_intermediate,
-    )
-
+    eff, outlier_file_path = run_injections(taskname, h95)
     logging.info(f"Final Efficiency at h95: {eff * 100:.2f}%")
 
-    # 7. Update FITS Header with Results
+    # 6. Update FITS Header with Results
     with fits.open(outlier_file_path, mode="update") as hdul:
         # Header info
         hdul[0].header["HIERARCH sky_radius"] = sky_radius
         hdul[0].header["h95"] = h95
-        hdul[0].header["dh95"] = h95 * dx
+        hdul[0].header["dh95"] = limit.dh95
         hdul[0].header[f"p{args.n_inj}"] = round(eff * 100, 2)
 
         # Append Sigmoid Data Tables
         cols_h0_p = fits.ColDefs(
             [
-                fits.Column(name="h0", format="E", array=np.array(h0_arr)),
-                fits.Column(name="p", format="E", array=np.array(eff_arr)),
+                fits.Column(name="h0", format="E", array=limit.h0),
+                fits.Column(name="p", format="E", array=limit.efficiency),
             ]
         )
         hdul.append(fits.BinTableHDU.from_columns(cols_h0_p, name="h0_p"))
