@@ -11,7 +11,7 @@ import numpy as np
 from jaxtyping import Float, Int
 from matplotlib.patches import Patch
 
-from paws.definitions import SECONDS_PER_DAY
+from paws.definitions import MPLSTYLE, SECONDS_PER_DAY
 from paws.filepaths import PathManager
 from paws.settings import FixedSettings, Settings
 
@@ -105,7 +105,7 @@ def plot_coverage(
     week = 7 * SECONDS_PER_DAY
     origin = int(segments[0, 0])
     n_detectors = len(timestamps)
-    plt.style.use("paws")
+    plt.style.use(MPLSTYLE)
     fig, ax = plt.subplots(figsize=(16, 5))
     segment_bars = [
         ((start - origin) / week, (end - start) / week) for start, end in segments

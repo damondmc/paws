@@ -1,7 +1,11 @@
-"""Names of the phase parameters, the injection parameters and the tasks; the time constants."""
+"""Names of the phase parameters, the injection parameters and the tasks; the time constants; the plot style."""
+
+from pathlib import Path
 
 SECONDS_PER_DAY = 86400
 SECONDS_PER_YEAR = 365.25 * SECONDS_PER_DAY
+
+MPLSTYLE = Path(__file__).with_name("paws.mplstyle")  # plt.style.use(MPLSTYLE)
 
 
 def phase_param_name(order: int) -> tuple[list[str], list[str]]:

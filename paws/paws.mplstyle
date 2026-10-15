@@ -1,0 +1,8 @@
+# paws plot style: plt.style.use(paws.definitions.MPLSTYLE)
+text.usetex : True
+mathtext.fontset : cm
+font.family : DejaVu Sans
+font.size : 22
+axes.linewidth : 1
+axes.grid : False
+axes.labelweight : normal
