@@ -1,0 +1,44 @@
+# Example search: the initial search stage and the settings fixed once it has run.
+semi_mm: 0.2  # max. mismatch of the semicoherent metric (over the whole observation time)
+coh_mm: 0.1  # max. mismatch of the coherent metrics (each segment)
+cluster_n_spacing: 4.0  # outliers within this many template spacings are one cluster
+
+# Python file defines the spindown model
+spindown_model: spindown.py
+
+stages:
+  search-0:
+    # seeds
+    prev: null  # this is the initial search so no previous stage
+    prev_sat: false  # true: the seeds are the previous stage's saturated table
+    injection: null  # no injections
+    upperlimit: false  # we are not in an upper limit stage
+
+    # Weave run
+    tcoh: 5  # coherence time in days
+    order: 2  # spin-down order
+    n_seg: 107  # number of segments (T_obs / tcoh)
+    metric: o4ab_t5_s2.fts  # in <osdf_dir>/metricSetup (`paws metric`)
+    bands: [20, 400]  # [f_min, f_max) Hz
+    skip_bands: []
+    search_df1: 5.0e-10  # f1dot sub-band width of one Weave job
+    search_df2: 1.0e-17  # f2dot sub-band width of one Weave job
+    sky_grid: null
+    n_sky: 1  # only search for the sky point of the target
+    sky_radius: 0.0
+    spacing_alpha: null
+    spacing_delta: null
+    toplist: 2000  # Weave --toplist-limit
+
+    # Condor jobs
+    tasks_per_job: 10  # number of Weave tasks per condor job
+    request_memory: 16GB  # condor memory requested
+    request_disk: 4GB  # condor disk requested
+    request_cpu: 1  # condor CPU requested
+    image: paws.sif  # in <osdf_dir>/images; null: no container
+
+    # outlier collection
+    keep: 2000  # candidates kept per Weave toplist before the mean2F threshold
+    thresholds: null
+    cluster: true
+    separate_saturated: true  # saturated jobs in their own result table

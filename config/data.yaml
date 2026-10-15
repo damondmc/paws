@@ -1,0 +1,16 @@
+# Example data: the SFTs and the target, fixed for the whole analysis.
+sft_source: O4_1800s  # data label in result paths
+# local OSDF mount path of the SFTs: <sft_dir>/<detector>/<band>/*.sft (converted to osdf:// URLs)
+sft_dir: /osdf/igwn/cit/staging/albert.einstein/SFTs/O4_1800s
+detectors: [H1, L1]
+ref_time: 1400000000  # GPS reference time of the frequency parameters
+f0_band: 0.025  # Hz, frequency sub-band of one Weave job
+
+target:
+  name: TargetX
+  # sky position [rad]
+  alpha: 1.5
+  delta: -0.5
+  # search region half-widths [rad]
+  dalpha: 0
+  ddelta: 0

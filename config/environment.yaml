@@ -1,0 +1,10 @@
+# Example environment: the user's directories, executables and accounting group.
+user: albert.einstein
+home_dir: /home/albert.einstein/analysis/  # project dir
+osdf_dir: /osdf/igwn/cit/staging/albert.einstein/  # local OSDF mount: Weave results, metrics, images
+acc_group: ligo.dev.o4.cw.directedisolated.semicoherent
+
+# null: the lalsuite installed with paws (in the container image, /opt/paws/.venv/bin); a path is used instead
+executables:
+  weave: null  # lalpulsar_Weave of the jobs; null needs an image on every Weave stage
+  weave_setup: null  # lalpulsar_WeaveSetup of `paws metric`; null: the one on PATH

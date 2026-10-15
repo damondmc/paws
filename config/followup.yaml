@@ -1,0 +1,118 @@
+# Example follow-up: the upper limit, the injection stages, the threshold calibrations and the follow-up chain.
+# The x- entries are YAML anchors that paws ignores; `<<: [*t5, *base]` merges them (the first wins) and a stage's
+# own fields override them.
+n_spacing: 8.0  # template spacings searched each side of a seed
+
+# `paws thresholds <name>` calibrates thresholds/<name>.yaml on two injection stages: the seeds' stage and the stage
+# the thresholds apply to; a follow-up applies it with `thresholds: <name>`
+x-cuts: &cuts
+  excess_ratio_percentile: 0.1  # % of injections lost by the (2F - 4) excess ratio threshold over the seed
+  h1_l1_percentile: 0.1  # % of injections lost by the H1/L1 excess-ratio window; null: no window
+  h1_l1_noise_weights: noise_weights.csv  # in this directory (`paws noise-weights`); null: no noise normalization
+  growth_percentile: null  # % of injections lost by the growth cut over the search outlier; null: no growth cut
+  growth_search_injection: null  # the injection stage at the search's coherence time, the growth reference
+  bands: [20, 100, 200, 300, 400]  # threshold band edges in Hz: one threshold and window per band
+calibrations:
+  t10:
+    <<: *cuts  # the cuts of x-cuts
+    injections: [injections-0, injections-1]
+  t20:
+    <<: *cuts  # the cuts of x-cuts
+    injections: [injections-1, injections-2]
+    growth_percentile: 0.1  # overrides x-cuts: adds the growth cut to the t20 thresholds
+    growth_search_injection: injections-0
+
+# fields shared by every follow-up stage
+x-base: &base
+  # seeds
+  prev_sat: false  # true: the seeds are the previous stage's saturated table
+  injection: null  # no injections
+  upperlimit: false  # not an upper limit stage
+
+  # Weave run
+  bands: [20, 400]  # [f_min, f_max) Hz
+  skip_bands: []
+  search_df1: null  # a follow-up sizes its cells from the seed's spacing and n_spacing
+  search_df2: null
+  sky_grid: null
+  n_sky: 1  # only the sky point of the seed
+  sky_radius: 0.0
+  spacing_alpha: null
+  spacing_delta: null
+  toplist: 2000  # Weave --toplist-limit
+
+  # Condor jobs
+  request_disk: 4GB
+  request_cpu: 1
+  image: paws.sif  # in <osdf_dir>/images; null: no container
+
+  # outlier collection
+  keep: 1  # the loudest candidate per seed
+  thresholds: null
+  cluster: true
+  separate_saturated: false
+
+# Weave setup per coherence time: tcoh in days, spin-down order, segments, metric in <osdf_dir>/metricSetup
+x-t5: &t5 {tcoh: 5, order: 2, n_seg: 107, metric: o4ab_t5_s2.fts}
+x-t10: &t10 {tcoh: 10, order: 2, n_seg: 54, metric: o4ab_t10_s2.fts}
+x-t20: &t20 {tcoh: 20, order: 2, n_seg: 27, metric: o4ab_t20_s2.fts}
+# sky grid around each seed: (d_alpha, d_delta) offsets in this directory, n_sky points
+x-grid: &grid {sky_grid: sky_grid.txt, n_sky: 9}
+# an injection follow-up takes its seeds' injections
+x-seed-injections: &seed_injections {order: 4, n_inj: null, n_inj_max: null, h0_file: null}
+
+stages:
+  upperlimit:  # its jobs inject and run Weave themselves
+    <<: [*t5, *base]
+    prev: search-0
+    upperlimit: true
+    # injections: spin-down order, number per band, h0 file relative to home_dir
+    injection: {order: 4, n_inj: 200, n_inj_max: null, h0_file: postprocess/data/h0_estimate.txt}
+    sky_radius: 1.25e-4  # spacing > sky_radius: a single sky point
+    spacing_alpha: 2.5e-4
+    spacing_delta: 2.5e-4
+    tasks_per_job: 1
+    request_memory: 16GB
+    request_disk: 6GB
+    request_cpu: 8
+
+  injections-0:  # new injections in the non-saturated sub-bands of search-0
+    <<: [*t5, *base]
+    prev: search-0
+    injection: {order: 4, n_inj: 20, n_inj_max: null, h0_file: postprocess/data/h0_upperlimit.txt}
+    sky_radius: 1.25e-4
+    spacing_alpha: 2.5e-4
+    spacing_delta: 2.5e-4
+    tasks_per_job: 20
+    request_memory: 3GB
+
+  injections-1:
+    <<: [*t10, *base]
+    prev: injections-0
+    injection: *seed_injections
+    tasks_per_job: 20
+    request_memory: 2GB
+
+  injections-2:
+    <<: [*grid, *t20, *base]
+    prev: injections-1
+    injection: *seed_injections
+    tasks_per_job: 18  # 2 injections x 9 sky points
+    request_memory: 2GB
+
+  followup-1:  # seeds: the search-0 outliers passing the seed cuts of thresholds/t10.yaml
+    <<: [*t10, *base]
+    prev: search-0
+    thresholds: t10
+    tasks_per_job: 20
+    request_memory: 2GB
+
+  followup-2:
+    <<: [*grid, *t20, *base]
+    prev: followup-1
+    thresholds: t20
+    tasks_per_job: 18  # 2 seeds x 9 sky points
+    request_memory: 2GB
+
+chains:
+  main: [followup-1, followup-2]  # the follow-ups of the real candidates, in order
