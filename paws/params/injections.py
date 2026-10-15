@@ -192,10 +192,8 @@ class InjectionParamGenerator:
         (injection params replicated per sky point). Consecutive blocks of n_sky rows belong
         to the same injection, matching what ResultAnalysisManager.make_outlier expects.
         """
-        if freq_deriv_order > 4:
-            print("Error: frequency derivative order larger than 4.")
-        if inj_freq_deriv_order > 4:
-            print("Error: Injection frequency derivative order larger than 4.")
+        if freq_deriv_order > 4 or inj_freq_deriv_order > 4:
+            raise ValueError("spin-down orders above 4 are not supported")
 
         # 1. Generate Injection Table (n_inj rows)
         ip_hdu = self.generate_injections(

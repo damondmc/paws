@@ -1,7 +1,6 @@
 """Spin-down models: the spin-down ranges searched at a frequency. search.yaml names a script in the config directory
 defining spindown_model(freq) -> SpindownModel; a model subclasses SpindownModel."""
 
-import sys
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -174,7 +173,7 @@ class PowerLawModel(SpindownModel):
         with np.errstate(divide="ignore", invalid="ignore"):
             nc = f0 * f2 / f1**2
         if np.any(nc < 0):
-            sys.exit("braking index is negative")
+            raise ValueError("negative braking index")
         return nc
 
     def f3_value(

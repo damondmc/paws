@@ -17,14 +17,12 @@ from paws.settings import FixedSettings
 
 from .clustering import clustering
 
-# one Weave result file to read: (index, job index, path, mean2F threshold, num_toplist, freq_deriv_order,
-# read injections)
+# one Weave result file to read:
+# (index, job index, path, mean2F threshold, num_toplist, freq_deriv_order, read injections)
 Job = tuple[int, int, Union[str, Path], float, int, int, bool]
-# what was read: (index, job index, outlier table, injection table, template spacings, is saturated); the tables
-# and spacings are None when the file is missing
-JobResult = tuple[
-    int, int, Optional[Table], Optional[Table], Optional[dict[str, float]], int
-]
+# what was read:
+# (index, job index, outlier table, injection table, template spacings, is saturated)
+JobResult = tuple[int, int, Table, Optional[Table], dict[str, float], int]
 
 
 def read_loudest_row(weave_result_path: Path) -> Shaped[np.ndarray, "1"]:
@@ -48,6 +46,19 @@ def loudest_rows(
             n_seeds, -1
         )
     return rows[np.arange(n_seeds), rows["mean2F"].argmax(axis=1)]
+
+
+def cached_loudest_rows(
+    cache_path: Path, result_files_per_seed: list[list[Path]], n_threads: int
+) -> Shaped[np.ndarray, " n_seed"]:
+    """loudest_rows of the seeds, computed and saved to cache_path (.npy) the first time, loaded from it after."""
+    if not cache_path.exists():
+        rows = loudest_rows(result_files_per_seed, n_threads)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = cache_path.with_name(cache_path.stem + ".tmp.npy")
+        np.save(temporary_path, rows)
+        temporary_path.replace(cache_path)
+    return np.load(cache_path)
 
 
 def make_outlier_table(
@@ -76,20 +87,17 @@ def make_injection_table(
 
 
 def read_job_outliers(job: Job) -> JobResult:
-    """Outliers of one Weave result file (see Job and JobResult)."""
+    """Outliers of one Weave result file (see Job and JobResult); a missing file raises FileNotFoundError."""
     i, job_idx, file_path, th, num_toplist, freq_deriv_order, read_inj = job
-    try:
-        # one open per file: toplist, header spacing and injections
-        with fits.open(file_path) as hdul:
-            spacing = weave_header_spacing(hdul[0].header, freq_deriv_order)
-            outliers = make_outlier_table(hdul[1].data, th, num_toplist)
-            is_sat = int(len(outliers) >= num_toplist)
-            injections = None
-            if read_inj:
-                outliers, injections = make_injection_table(hdul[2].data, outliers)
-        return (i, job_idx, outliers, injections, spacing, is_sat)
-    except FileNotFoundError:
-        return (i, job_idx, None, None, None, 0)
+    # one open per file: toplist, header spacing and injections
+    with fits.open(file_path) as hdul:
+        spacing = weave_header_spacing(hdul[0].header, freq_deriv_order)
+        outliers = make_outlier_table(hdul[1].data, th, num_toplist)
+        is_sat = int(len(outliers) >= num_toplist)
+        injections = None
+        if read_inj:
+            outliers, injections = make_injection_table(hdul[2].data, outliers)
+    return (i, job_idx, outliers, injections, spacing, is_sat)
 
 
 def read_jobs_with_threads(jobs: list[Job], n_threads: int) -> list[JobResult]:
@@ -203,7 +211,6 @@ class ResultAnalysisManager:
             n_groups = len(results) // n_sky
             groups = [results[g * n_sky : (g + 1) * n_sky] for g in range(n_groups)]
 
-        missing_files = 0
         for group in groups:
             group_outliers = []
             group_inj = None
@@ -212,14 +219,11 @@ class ResultAnalysisManager:
 
             for res in group:
                 _, job_idx, _outlier, _inj_param, spacing, is_sat = res
-                if _outlier is None:
-                    missing_files += 1
-                    continue
                 if len(_outlier) > 0:
                     group_outliers.append(_outlier)
                 if group_inj is None and _inj_param is not None:
                     group_inj = _inj_param
-                if group_spacing is None and spacing is not None:
+                if group_spacing is None:
                     group_spacing = spacing
 
             if group_outliers:
@@ -247,9 +251,6 @@ class ResultAnalysisManager:
                             max_spacing[k] = max(max_spacing.get(k, 0), v)
             else:
                 info_list.append((freq, first_job_idx, 0, 0))
-
-        if missing_files > 0:
-            print(f"Warning: {missing_files} files missing for {desc} {freq}Hz")
 
         return (
             outlier_table_list,
@@ -339,9 +340,7 @@ class ResultAnalysisManager:
         cluster_hdul.append(info_clustered_hdu)
 
         # 5. File Path Logic
-        outlier_file_path = self.paths.outlier_file(
-            freq, taskname, stage, cluster=True, location="home"
-        )
+        outlier_file_path = self.paths.outlier_file(freq, taskname, stage, cluster=True)
 
         if work_in_local_dir:
             outlier_file_path = Path(outlier_file_path).name
@@ -493,7 +492,7 @@ class ResultAnalysisManager:
         # 8. Write Initial File
         outlier_hdul = fits.HDUList(hdus)
         outlier_file_path = self.paths.outlier_file(
-            freq, taskname, stage, cluster=False, location="home"
+            freq, taskname, stage, cluster=False
         )
         if work_in_local_dir:
             outlier_file_path = Path(outlier_file_path).name
@@ -585,9 +584,7 @@ class ResultAnalysisManager:
             0,
         )
 
-        path = self.paths.outlier_file(
-            freq, taskname, stage, cluster=False, location="home"
-        )
+        path = self.paths.outlier_file(freq, taskname, stage, cluster=False)
         make_dir([path])
         fits.HDUList(
             [primary_hdu, outlier_hdu, fits.BinTableHDU(data=info, name="info")]

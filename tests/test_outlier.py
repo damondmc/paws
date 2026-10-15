@@ -62,16 +62,17 @@ def test_read_jobs_same_with_processes(tmp_path):
         )
         for i in range(9)
     ]
-    files.insert(4, tmp_path / "missing.fts")  # a missing result file stays in place
     jobs = [(i, i + 1, path, 4.5, 1000, 2, False) for i, path in enumerate(files)]
     single = read_jobs(jobs, n_processes=1, n_threads=2, desc="test")
     multi = read_jobs(jobs, n_processes=3, n_threads=2, desc="test")
-    assert [result[1] for result in multi] == list(range(1, 11))
+    assert [result[1] for result in multi] == list(range(1, 10))
     for one, many in zip(single, multi):
         assert one[:2] == many[:2] and one[5] == many[5]
-        assert (one[2] is None) == (many[2] is None)
-        if one[2] is not None:
-            assert list(one[2]["mean2F"]) == list(many[2]["mean2F"])
+        assert list(one[2]["mean2F"]) == list(many[2]["mean2F"])
+    jobs.insert(4, (9, 10, tmp_path / "missing.fts", 4.5, 1000, 2, False))
+    for n_processes in (1, 3):
+        with pytest.raises(FileNotFoundError):
+            read_jobs(jobs, n_processes=n_processes, n_threads=2, desc="test")
 
 
 def test_write_loudest_outliers(tmp_path, settings, paths):
@@ -100,9 +101,7 @@ def test_write_loudest_outliers(tmp_path, settings, paths):
         [files_per_seed[0][0]],
     )
 
-    unclustered = paths.outlier_file(
-        50, TASKNAME, "followup-2", cluster=False, location="home"
-    )
+    unclustered = paths.outlier_file(50, TASKNAME, "followup-2", cluster=False)
     with fits.open(unclustered) as hdul:
         assert hdul[0].header["HIERARCH df"] == pytest.approx(0.01)
         outliers = hdul["followup-2_outlier"].data
@@ -114,8 +113,6 @@ def test_write_loudest_outliers(tmp_path, settings, paths):
         assert hdul[0].header["HIERARCH history TCoh5"] == "search-0"
         info = hdul["info"].data
         assert list(info["jobIndex"]) == [0, 1] and list(info["outliers"]) == [1, 0]
-    clustered = paths.outlier_file(
-        50, TASKNAME, "followup-2", cluster=True, location="home"
-    )
+    clustered = paths.outlier_file(50, TASKNAME, "followup-2", cluster=True)
     clustered_rows = fits.getdata(clustered, 1)
     assert len(clustered_rows) == 1 and list(clustered_rows["mean2F_TCoh5"]) == [6.5]
