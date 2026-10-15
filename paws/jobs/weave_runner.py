@@ -13,7 +13,7 @@ from jaxtyping import Shaped
 from paws.analysis.outlier import ResultAnalysisManager
 from paws.definitions import phase_param_name
 from paws.filepaths import PathManager, make_dir
-from paws.fits_io import TableRow
+from paws.fits_io import FITSTableRow
 from paws.settings import FixedSettings
 
 
@@ -33,7 +33,7 @@ def search_job(
     metric_file: str,
     extra_stats: str,
     weave_exe: str,
-    search_data: tuple[str, TableRow],
+    search_data: tuple[str, FITSTableRow],
 ) -> str:
     """
     Worker function to run a single WEAVE search job (search_data: (result file, parameter row)).
@@ -84,8 +84,8 @@ def injection_job(
     metric_file: str,
     extra_stats: str,
     weave_exe: str,
-    search_data: tuple[str, TableRow],
-    injection_data: TableRow,
+    search_data: tuple[str, FITSTableRow],
+    injection_data: FITSTableRow,
 ) -> str:
     """
     Worker function to run a single WEAVE injection job (search_data: (result file, parameter row);

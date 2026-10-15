@@ -10,7 +10,7 @@ from jaxtyping import Float, Shaped
 from paws.definitions import phase_param_name
 
 # one row of a FITS table (astropy) or of a structured array (numpy)
-TableRow = Union[fits.FITS_record, np.void]
+FITSTableRow = Union[fits.FITS_record, np.void]
 
 
 def read_fits_table(
