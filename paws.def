@@ -14,7 +14,8 @@ From: ubuntu:22.04
     # 2. Install uv
     curl -LsSf https://astral.sh/uv/install.sh | sh
 
-    # 3. Clone and sync cleanly
+    # 3. Clone and sync cleanly; the dependencies include lalsuite, so /opt/paws/.venv/bin holds lalpulsar_Weave and
+    #    lalpulsar_WeaveSetup, the executables of environment.yaml when its paths are null
     git clone https://github.com/damondmc/paws /opt/paws
     cd /opt/paws
     /root/.local/bin/uv sync --frozen --no-dev --no-editable --compile-bytecode --no-cache
@@ -24,3 +25,8 @@ From: ubuntu:22.04
     rm -rf /root/.local/bin/uv
     apt-get clean
     rm -rf /var/lib/apt/lists/*
+
+%test
+    lalpulsar_Weave --version
+    lalpulsar_WeaveSetup --version
+    paws --help

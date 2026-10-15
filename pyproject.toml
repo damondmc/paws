@@ -10,6 +10,7 @@ dependencies = [
     "tqdm",
     "scipy",
     "pyfstat",
+    "lalsuite[lalpulsar]==7.26.16",
     "matplotlib",
     "pydantic>=2",
     "pyyaml>=6.0.3",
