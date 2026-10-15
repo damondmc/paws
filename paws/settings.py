@@ -106,7 +106,6 @@ class Injection(YamlModel):
 
     order: int = Field(ge=1, le=4)  # spin-down order of the injected signals
     n_inj: Optional[int]  # injections per band; null: the seeds' injections
-    n_inj_max: Optional[int]  # keep only the first n_inj_max seeds per band; null: all
     # relative to home_dir, columns freq, h0, ...; null: the seeds' injections
     h0_file: Optional[str]
 

@@ -41,13 +41,13 @@ x-t10: &t10 {tcoh: 10, order: 2, n_seg: 54, metric: test_t10.fts}
 x-t20: &t20 {tcoh: 20, order: 2, n_seg: 27, metric: test_t20.fts}
 x-grid: &grid {sky_grid: sky_grid.txt, n_sky: 3}
 # an injection follow-up takes its seeds' injections
-x-seed-injections: &seed_injections {order: 4, n_inj: null, n_inj_max: null, h0_file: null}
+x-seed-injections: &seed_injections {order: 4, n_inj: null, h0_file: null}
 
 stages:
   injections-0:  # new injections in the non-saturated sub-bands of search-0
     <<: [*t5, *base]
     prev: search-0
-    injection: {order: 4, n_inj: 20, n_inj_max: null, h0_file: postprocess/data/h0.txt}
+    injection: {order: 4, n_inj: 20, h0_file: postprocess/data/h0.txt}
 
   injections-1:
     <<: [*t10, *base]
