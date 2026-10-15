@@ -1,49 +1,17 @@
-import pytest
-
 from paws.filepaths import make_dir
 
 TASKNAME = "TestTarget_followup-1_TCoh10_O2_50Hz"
 
 
-def test_outlier_file_home_and_osdf(paths, settings):
-    home = paths.outlier_file(50, TASKNAME, "followup-1", cluster=True, location="home")
-    osdf = paths.outlier_file(
-        50, TASKNAME, "followup-1", cluster=False, location="osdf"
-    )
-    assert home == (
+def test_outlier_file(paths, settings):
+    clustered = paths.outlier_file(50, TASKNAME, "followup-1", cluster=True)
+    unclustered = paths.outlier_file(50, TASKNAME, "followup-1", cluster=False)
+    outliers_dir = (
         settings.environment.home_dir
         / "results/followup-1/TestTarget/TEST_SFTS/50/Outliers"
-        / f"{TASKNAME}_outlier_clustered.fts"
     )
-    assert osdf == (
-        settings.environment.osdf_dir
-        / "o4ab/results/followup-1/TestTarget/TEST_SFTS/50/Outliers"
-        / f"{TASKNAME}_outlier.fts"
-    )
-
-
-def test_outlier_file_existing_prefers_home(paths):
-    home = paths.outlier_file(50, TASKNAME, "followup-1", cluster=True, location="home")
-    osdf = paths.outlier_file(50, TASKNAME, "followup-1", cluster=True, location="osdf")
-    assert (
-        paths.outlier_file(
-            50, TASKNAME, "followup-1", cluster=True, location="existing"
-        )
-        == osdf
-    )
-    make_dir([home])
-    home.touch()
-    assert (
-        paths.outlier_file(
-            50, TASKNAME, "followup-1", cluster=True, location="existing"
-        )
-        == home
-    )
-
-
-def test_outlier_file_bad_location(paths):
-    with pytest.raises(ValueError):
-        paths.outlier_file(50, TASKNAME, "followup-1", cluster=True, location="scratch")
+    assert clustered == outliers_dir / f"{TASKNAME}_outlier_clustered.fts"
+    assert unclustered == outliers_dir / f"{TASKNAME}_outlier.fts"
 
 
 def test_weave_output_file(paths, settings):

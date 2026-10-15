@@ -9,9 +9,8 @@ from jaxtyping import Shaped
 
 from paws.analysis.outlier import ResultAnalysisManager
 from paws.filepaths import PathManager
-from paws.params.models import PowerLawModel
+from paws.params.models import SpindownModel
 from paws.params.search import SearchParamGenerator
-from paws.pipeline.seed_plan import SeedPlan
 from paws.settings import Settings, Stage
 from paws.workflow.manager import WorkflowManager
 
@@ -31,9 +30,8 @@ class StageContext:
         self.paths = PathManager(settings)
         self.workflow_manager = WorkflowManager(settings)
         self.result_manager = ResultAnalysisManager(settings)
-        # band -> SeedPlan built while writing a follow-up stage's DAGs
-        self.seed_plans: dict[int, SeedPlan] = {}
-        self.seed_counts: dict[str, int] = {"seeds": 0, "new": 0}
+        # seeds of a follow-up stage, counted while writing its DAGs
+        self.n_seeds = 0
 
     def taskname(self, freq: int) -> str:
         return self.stage.taskname(self.target, freq)
@@ -45,14 +43,10 @@ class StageContext:
             prev_taskname,
             self.prev_stage.name,
             cluster=cluster,
-            location="existing",
         )
 
-    def spindown_model(self, freq: int) -> PowerLawModel:
-        spindown = self.settings.search.spindown
-        return PowerLawModel(
-            nc_min=spindown.nc_min, nc_max=spindown.nc_max, tau=spindown.tau(freq)
-        )
+    def spindown_model(self, freq: int) -> SpindownModel:
+        return self.settings.spindown_model(freq)
 
     @cache
     def h0_by_freq(self) -> dict[int, float]:
@@ -66,7 +60,7 @@ class StageContext:
         """Parameter rows of the initial search's Weave jobs in the band."""
         target = self.target
         generator = SearchParamGenerator(self.spindown_model(freq), self.stage.order)
-        params = generator.generate_parameters(
+        params = generator.generate_search_ranges(
             target.alpha,
             target.dalpha,
             target.delta,

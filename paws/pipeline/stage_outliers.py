@@ -1,10 +1,6 @@
-"""Outlier collection of a stage, band by band.
-
-search / injection / injection follow-up: ResultAnalysisManager.make_outlier over the stage's own Weave results.
-follow-up of real candidates: the loudest candidate of each seed (seed plan, possibly reused results) must pass
-the stage's excess ratio threshold and, when set, its H1/L1 excess-ratio window (noise-normalized when its threshold
-file has h1_l1_noise_weights) and its growth cut over the search outlier the seed descends from.
-"""
+"""`paws outliers`: the outlier files of a stage, band by band. The search and the injection stages collect every
+candidate above the mean2F threshold (ResultAnalysisManager.make_outlier); a follow-up of real candidates keeps the
+loudest candidate of each seed and applies the cuts of its threshold file."""
 
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Pool
@@ -13,30 +9,23 @@ from typing import Any, Optional
 
 import numpy as np
 from astropy.io import fits
-from jaxtyping import Shaped
 from tqdm import tqdm
 
-from paws.analysis.outlier import loudest_rows
+from paws.analysis.outlier import cached_loudest_rows
 from paws.analysis.statistics import (
     excess_ratio_to_mean2f_threshold,
     inside_h1_l1_window,
     search_mean2f_threshold,
 )
-from paws.filepaths import make_dir
-from paws.pipeline import reuse
 from paws.pipeline.context import N_THREADS, StageContext
-from paws.pipeline.dag import dag_list_path
 from paws.pipeline.history import chain_history, history_column
 from paws.pipeline.noise_weights import log10_noise_ratio
-from paws.pipeline.seed_plan import (
-    SeedPlan,
-    default_seed_plan,
-    load_seed_plan,
+from paws.pipeline.seeds import (
+    read_seed_rows,
     result_files_per_seed,
-    save_seed_plans,
+    selected_seed_rows,
 )
-from paws.pipeline.seeds import read_seed_rows, seed_outlier_file, selected_seed_rows
-from paws.pipeline.stage_thresholds import record_threshold_file, stage_thresholds
+from paws.pipeline.thresholds import record_threshold_file, stage_thresholds
 from paws.settings import Settings
 
 N_PROCESSES = 8
@@ -57,7 +46,7 @@ def total_semicoherent_templates(context: StageContext, freq: int, n_jobs: int) 
         return sum(executor.map(templates_of_job, range(1, n_jobs + 1)))
 
 
-def make_outlier_kwargs(context: StageContext) -> dict[str, Any]:
+def outlier_collection_kwargs(context: StageContext) -> dict[str, Any]:
     stage = context.stage
     return dict(
         num_toplist=stage.keep,
@@ -73,7 +62,7 @@ def make_outlier_kwargs(context: StageContext) -> dict[str, Any]:
     )
 
 
-def outliers_search(context: StageContext, freq: int) -> None:
+def collect_search_outliers(context: StageContext, freq: int) -> None:
     n_jobs = context.search_params(freq).size
     n_templates = total_semicoherent_templates(context, freq, n_jobs)
     mean2f_threshold = search_mean2f_threshold(n_templates, context.stage.n_seg)
@@ -82,11 +71,11 @@ def outliers_search(context: StageContext, freq: int) -> None:
         freq,
         mean2f_threshold,
         n_jobs,
-        **make_outlier_kwargs(context),
+        **outlier_collection_kwargs(context),
     )
 
 
-def outliers_injection(context: StageContext, freq: int) -> None:
+def collect_injection_outliers(context: StageContext, freq: int) -> None:
     search_file = context.prev_outlier_file(freq, cluster=True)
     if not search_file.is_file():
         print(f"{freq} Hz: no {context.prev_stage.name} outlier file, skipped")
@@ -97,11 +86,11 @@ def outliers_injection(context: StageContext, freq: int) -> None:
         freq,
         mean2f_threshold,
         context.stage.injection.n_inj,
-        **make_outlier_kwargs(context),
+        **outlier_collection_kwargs(context),
     )
 
 
-def outliers_injection_followup(context: StageContext, freq: int) -> None:
+def collect_injection_followup_outliers(context: StageContext, freq: int) -> None:
     seed_rows, _ = read_seed_rows(context.settings, context.paths, context.stage, freq)
     if seed_rows is None or len(seed_rows) == 0:
         return
@@ -110,32 +99,27 @@ def outliers_injection_followup(context: StageContext, freq: int) -> None:
         freq,
         np.zeros(len(seed_rows)),
         len(seed_rows),
-        **make_outlier_kwargs(context),
+        **outlier_collection_kwargs(context),
     )
 
 
 # -------------------- follow-up of real candidates --------------------
 
 
-def band_seed_plan(
-    context: StageContext, freq: int, seed_rows: Shaped[np.ndarray, " n_seed"]
-) -> SeedPlan:
-    """The band's saved seed plan; built (and saved) when the stage's DAG step did not write one."""
-    plan = load_seed_plan(context.settings, context.stage, freq)
-    if plan is None:
-        if context.stage.reuse:
-            plan = reuse.build_seed_plan(
-                context.settings, context.paths, context.stage, freq, seed_rows
-            )
-        else:
-            plan = default_seed_plan(context.stage, seed_rows)
-        save_seed_plans(context.settings, context.stage, {freq: plan})
-    if len(plan.keys) != len(seed_rows):
+def band_result_files(
+    context: StageContext, freq: int, n_seeds: int
+) -> list[list[Path]]:
+    """Weave result files per seed of the band."""
+    stage = context.stage
+    files_per_seed = result_files_per_seed(
+        context.paths, context.settings, stage, freq, n_seeds + 1
+    )
+    if files_per_seed[-1][0].exists():
         raise ValueError(
-            f"{context.stage.name} {freq} Hz: seed plan has {len(plan.keys)} seeds, "
-            f"the previous stage {len(seed_rows)}; delete the stale seed_plan.npz entry"
+            f"{stage.name} {freq} Hz: Weave results beyond the {n_seeds} seeds of {stage.prev}; "
+            f"the run does not match the seeds"
         )
-    return plan
+    return files_per_seed[:-1]
 
 
 def loudest_cache_path(context: StageContext, freq: int, first_seed: int) -> Path:
@@ -149,23 +133,17 @@ def loudest_cache_path(context: StageContext, freq: int, first_seed: int) -> Pat
 
 
 def cache_loudest_chunk(chunk: tuple[Path, list[list[Path]], str]) -> None:
-    """Loudest row of each seed of one chunk (cache path, result files per seed, label), saved to the cache path
-    (skipped when already cached)."""
+    """Caches the loudest row of each seed of one chunk."""
     cache_path, files_per_seed, label = chunk
-    if cache_path.exists():
-        return
-    rows = loudest_rows(files_per_seed, N_THREADS)
-    make_dir([cache_path])
-    temporary_path = cache_path.with_name(cache_path.stem + ".tmp.npy")
-    np.save(temporary_path, rows)
-    temporary_path.replace(cache_path)
-    print(f"{label}: done", flush=True)
+    if not cache_path.exists():
+        cached_loudest_rows(cache_path, files_per_seed, N_THREADS)
+        print(f"{label}: done", flush=True)
 
 
-def collect_thresholded_followup(context: StageContext, bands: list[int]) -> None:
-    """Outlier files of a follow-up of real candidates: one INFO row per seed, the seeds whose loudest
-    candidate passes the excess ratio threshold (and the H1/L1 excess-ratio window and growth cut, when set) as
-    outliers, each with the statistics of the earlier stages of its chain (chain_history)."""
+def collect_followup_outliers(context: StageContext, bands: list[int]) -> None:
+    """Outlier files of a follow-up of real candidates.
+    One INFO row per seed, the seeds whose loudest candidate passes the cut.
+    Each with the statistics of the earlier stages of its chain."""
     stage = context.stage
     thresholds = stage_thresholds(context.settings, stage)
     record_threshold_file(context.settings, stage)
@@ -176,10 +154,7 @@ def collect_thresholded_followup(context: StageContext, bands: list[int]) -> Non
         seed_rows = selected_seed_rows(context.settings, context.paths, stage, freq)
         if seed_rows is None:
             continue
-        plan = band_seed_plan(context, freq, seed_rows)
-        files_per_seed = result_files_per_seed(
-            context.paths, context.settings, stage, freq, plan
-        )
+        files_per_seed = band_result_files(context, freq, len(seed_rows))
         seeds_by_band[freq], files_by_band[freq] = seed_rows, files_per_seed
         for first_seed in range(0, len(seed_rows), SEEDS_PER_CHUNK):
             stop_seed = min(first_seed + SEEDS_PER_CHUNK, len(seed_rows))
@@ -205,18 +180,22 @@ def collect_thresholded_followup(context: StageContext, bands: list[int]) -> Non
     for freq, seed_rows in seeds_by_band.items():
         loudest_per_seed = np.concatenate(
             [
-                np.load(loudest_cache_path(context, freq, first_seed))
+                cached_loudest_rows(
+                    loudest_cache_path(context, freq, first_seed),
+                    files_by_band[freq][first_seed : first_seed + SEEDS_PER_CHUNK],
+                    N_THREADS,
+                )
                 for first_seed in range(0, len(seed_rows), SEEDS_PER_CHUNK)
             ]
         )
         history = chain_history(chain, seed_rows)
         mean2f_threshold = excess_ratio_to_mean2f_threshold(
-            thresholds.at("excess_ratio", freq), seed_rows["mean2F"]
+            thresholds.in_band("excess_ratio", freq), seed_rows["mean2F"]
         )
         passed = loudest_per_seed["mean2F"] >= mean2f_threshold
         if thresholds.h1_l1_window is not None:
             passed &= inside_h1_l1_window(
-                thresholds.at("h1_l1_window", freq),
+                thresholds.in_band("h1_l1_window", freq),
                 loudest_per_seed["mean2F_H1"],
                 loudest_per_seed["mean2F_L1"],
                 log10_noise_ratio(
@@ -226,7 +205,7 @@ def collect_thresholded_followup(context: StageContext, bands: list[int]) -> Non
         if thresholds.growth is not None:
             # the excess ratio cut over the search outlier the seed descends from
             passed &= loudest_per_seed["mean2F"] >= excess_ratio_to_mean2f_threshold(
-                thresholds.at("growth", freq),
+                thresholds.in_band("growth", freq),
                 history[history_column("mean2F", chain[0])],
             )
         files_per_seed = files_by_band[freq]
@@ -262,7 +241,7 @@ def collect_thresholded_followup(context: StageContext, bands: list[int]) -> Non
 def collect_stage_outliers(
     settings: Settings, stage_name: str, bands: Optional[list[int]]
 ) -> None:
-    """Outlier files of every band of the stage (or only `bands`; None: the stage's bands)."""
+    """Outlier files of every band of the stage."""
     context = StageContext(settings, stage_name)
     stage = context.stage
     bands = bands or stage.freqs
@@ -271,70 +250,17 @@ def collect_stage_outliers(
             f"{stage.name}: upper-limit jobs write their own outlier files"
         )
     if stage.is_search:
-        collect_band = outliers_search
+        collect_band = collect_search_outliers
     elif stage.is_injection:
         collect_band = (
-            outliers_injection_followup
+            collect_injection_followup_outliers
             if context.prev_stage.is_injection
-            else outliers_injection
+            else collect_injection_outliers
         )
     elif stage.thresholds is not None:
-        collect_thresholded_followup(context, bands)
+        collect_followup_outliers(context, bands)
         return
     else:
         raise SystemExit(f"{stage.name} has no thresholds in followup.yaml")
     for freq in tqdm(bands, desc=f"{stage.name} outliers"):
         collect_band(context, freq)
-
-
-def outlier_collection_dag(context: StageContext, freq: int) -> Optional[Path]:
-    stage = context.stage
-    seed_rows, _ = read_seed_rows(context.settings, context.paths, stage, freq)
-    if seed_rows is None or len(seed_rows) == 0:
-        return None
-    environment_url, data_url, search_url = context.settings.job_config_urls()
-    return context.workflow_manager.make_outlier_dag(
-        environment_url,
-        data_url,
-        search_url,
-        context.taskname(freq),
-        freq,
-        stage.name,
-        stage.order,
-        len(seed_rows),
-        seed_outlier_file(context.settings, context.paths, stage, freq),
-        None,
-        num_toplist=stage.keep,
-        n_sky=stage.n_sky,
-        zero_threshold=True,
-        cluster=stage.cluster,
-        separate_saturated=False,
-        is_injection=True,
-        max_workers=N_THREADS,
-        request_memory="8GB",
-        request_disk="8GB",
-        request_cpu=1,
-        image=context.settings.image_url(stage),
-    )
-
-
-def make_stage_outlier_dags(
-    settings: Settings, stage_name: str, bands: Optional[list[int]]
-) -> None:
-    """Outlier-collection Condor DAGs of an injection follow-up stage and their DAG list."""
-    context = StageContext(settings, stage_name)
-    stage = context.stage
-    if not (stage.is_injection and context.prev_stage.is_injection):
-        raise SystemExit(
-            "Condor outlier collection applies to injection follow-ups only (the job keeps every candidate)"
-        )
-    weave_list_path = dag_list_path(context, bands)
-    list_path = weave_list_path.with_name(
-        weave_list_path.name.replace("_dag", "_outlier_dag")
-    )
-    with open(list_path, "w") as dag_list:
-        for freq in tqdm(bands or stage.freqs, desc=f"{stage.name} outlier DAGs"):
-            dag_file = outlier_collection_dag(context, freq)
-            if dag_file is not None:
-                dag_list.write(f"{dag_file}\n")
-    print(f"DAG list: {list_path}")

@@ -1,7 +1,5 @@
-"""Seeds of a follow-up stage: the previous stage's outliers in one band (with their injections for an injection
-follow-up); seeds from the initial search are kept only inside the stage's seed H1/L1 excess-ratio window, when its
-threshold file has one.
-"""
+"""Seeds of a follow-up stage: the previous stage's outliers of a band and their Weave result files (seed i runs as
+jobs i * n_sky + 1 to (i + 1) * n_sky)."""
 
 from pathlib import Path
 from typing import Optional
@@ -13,7 +11,7 @@ from paws.analysis.statistics import inside_h1_l1_window
 from paws.filepaths import PathManager
 from paws.fits_io import read_fits_table
 from paws.pipeline.noise_weights import log10_noise_ratio
-from paws.pipeline.stage_thresholds import stage_thresholds
+from paws.pipeline.thresholds import stage_thresholds
 from paws.settings import Settings, Stage
 
 
@@ -28,7 +26,6 @@ def seed_outlier_file(
         prev_taskname,
         prev_stage.name,
         cluster=not stage.prev_sat,
-        location="existing",
     )
 
 
@@ -48,18 +45,17 @@ def read_seed_rows(
     injection_rows = read_fits_table(path, "injection") if stage.is_injection else None
     if seed_rows is None:
         return None, None
-    if stage.is_injection and stage.injection.n_inj_max is not None:
-        n_inj_max = stage.injection.n_inj_max
-        seed_rows = seed_rows[:n_inj_max]
-        injection_rows = None if injection_rows is None else injection_rows[:n_inj_max]
     return seed_rows, injection_rows
 
 
 def selected_seed_rows(
     settings: Settings, paths: PathManager, stage: Stage, freq: int
 ) -> Optional[Shaped[np.ndarray, " n_seed"]]:
-    """Seed rows of a follow-up stage in one band: the previous stage's outliers; seeds from the initial search are
-    kept only inside the stage's seed H1/L1 excess-ratio window (when it has one). None when the band has no seeds."""
+    """Seed rows of a follow-up stage in one band: the previous stage's outliers
+
+    seeds from the initial search are kept only inside the stage's seed H1/L1 excess-ratio window.
+    None when the band has no seeds.
+    """
     seed_rows, _ = read_seed_rows(settings, paths, stage, freq)
     if seed_rows is None or len(seed_rows) == 0:
         return None
@@ -68,10 +64,24 @@ def selected_seed_rows(
         if thresholds.seed_h1_l1_window is not None:
             seed_rows = seed_rows[
                 inside_h1_l1_window(
-                    thresholds.at("seed_h1_l1_window", freq),
+                    thresholds.in_band("seed_h1_l1_window", freq),
                     seed_rows["mean2F_H1"],
                     seed_rows["mean2F_L1"],
                     log10_noise_ratio(settings, thresholds.h1_l1_noise_weights, freq),
                 )
             ]
     return seed_rows if len(seed_rows) else None
+
+
+def result_files_per_seed(
+    paths: PathManager, settings: Settings, stage: Stage, freq: int, n_seeds: int
+) -> list[list[Path]]:
+    """Weave result files (n_sky per seed) of each of the band's n_seeds seeds, in seed order."""
+    taskname = stage.taskname(settings.target, freq)
+    return [
+        [
+            paths.weave_output_file(freq, taskname, job, stage.name)
+            for job in range(seed * stage.n_sky + 1, (seed + 1) * stage.n_sky + 1)
+        ]
+        for seed in range(n_seeds)
+    ]

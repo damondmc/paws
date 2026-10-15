@@ -5,11 +5,11 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from paws.pipeline.calibrate import write_threshold_file
 from paws.pipeline.dag import make_stage_dags
 from paws.pipeline.metric import make_segments_and_metric
 from paws.pipeline.noise_weights import write_noise_weights
-from paws.pipeline.stage_outliers import collect_stage_outliers, make_stage_outlier_dags
-from paws.pipeline.stage_thresholds import write_threshold_file
+from paws.pipeline.stage_outliers import collect_stage_outliers
 from paws.settings import Settings
 
 
@@ -39,18 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     outliers_parser = subparsers.add_parser(
         "outliers",
-        help="collect a stage's outliers (--condor: as Condor jobs)",
-        description="Outlier files of a stage, collected locally; with --condor, outlier-collection DAGs "
-        "(injection follow-ups only).",
+        help="collect a stage's outliers from its Weave results",
+        description="Outlier files of a stage, collected from its Weave results.",
     )
     outliers_parser.add_argument(
         "stage", help="stage name in search.yaml or followup.yaml"
     )
     outliers_parser.add_argument(
         "--bands", type=int, nargs="+", help="only these 1 Hz bands"
-    )
-    outliers_parser.add_argument(
-        "--condor", action="store_true", help="write outlier-collection DAGs instead"
     )
 
     thresholds_parser = subparsers.add_parser(
@@ -111,8 +107,6 @@ def main(argv: Optional[list[str]] = None) -> None:
 
     if args.command == "dag":
         make_stage_dags(settings, args.stage, args.bands)
-    elif args.command == "outliers" and args.condor:
-        make_stage_outlier_dags(settings, args.stage, args.bands)
     elif args.command == "outliers":
         collect_stage_outliers(settings, args.stage, args.bands)
     elif args.command == "thresholds":

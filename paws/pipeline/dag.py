@@ -17,7 +17,7 @@ from paws.pipeline.seeds import read_seed_rows, seed_outlier_file, selected_seed
 from paws.settings import Settings
 
 
-def dag_search(context: StageContext, freq: int) -> Optional[Path]:
+def write_search_dag(context: StageContext, freq: int) -> Optional[Path]:
     return context.make_weave_dag(freq, context.search_params(freq))
 
 
@@ -39,7 +39,7 @@ def non_saturated_search_file(
     return path, non_saturated_bands
 
 
-def dag_injection(context: StageContext, freq: int) -> Optional[Path]:
+def write_injection_dag(context: StageContext, freq: int) -> Optional[Path]:
     """New injections in the non-saturated sub-bands of the initial search."""
     stage, target = context.stage, context.target
     search_file, non_saturated_bands = non_saturated_search_file(context, freq)
@@ -97,7 +97,7 @@ def followup_params(
     )
 
 
-def dag_followup(context: StageContext, freq: int) -> Optional[Path]:
+def write_followup_dag(context: StageContext, freq: int) -> Optional[Path]:
     """Real candidates: one Weave run (n_sky jobs) per seed of the band, in seed order."""
     stage = context.stage
     seed_rows = selected_seed_rows(context.settings, context.paths, stage, freq)
@@ -110,7 +110,7 @@ def dag_followup(context: StageContext, freq: int) -> Optional[Path]:
     )
 
 
-def dag_injection_followup(context: StageContext, freq: int) -> Optional[Path]:
+def write_injection_followup_dag(context: StageContext, freq: int) -> Optional[Path]:
     """The previous stage's injection outliers followed up with their injections."""
     stage = context.stage
     seed_rows, injection_rows = read_seed_rows(
@@ -128,7 +128,7 @@ def dag_injection_followup(context: StageContext, freq: int) -> Optional[Path]:
     )
 
 
-def dag_upperlimit(context: StageContext, freq: int) -> Optional[Path]:
+def write_upperlimit_dag(context: StageContext, freq: int) -> Optional[Path]:
     stage = context.stage
     search_file, non_saturated_bands = non_saturated_search_file(context, freq)
     if search_file is None:
@@ -169,20 +169,22 @@ def dag_upperlimit(context: StageContext, freq: int) -> Optional[Path]:
     )
 
 
-def stage_dag_maker(
+def stage_dag_writer(
     context: StageContext,
 ) -> Callable[[StageContext, int], Optional[Path]]:
     """The DAG function of the stage, from its structure."""
     stage = context.stage
     if stage.is_search:
-        return dag_search
+        return write_search_dag
     if stage.upperlimit:
-        return dag_upperlimit
+        return write_upperlimit_dag
     if stage.is_injection:
         return (
-            dag_injection_followup if context.prev_stage.is_injection else dag_injection
+            write_injection_followup_dag
+            if context.prev_stage.is_injection
+            else write_injection_dag
         )
-    return dag_followup
+    return write_followup_dag
 
 
 def dag_list_path(context: StageContext, bands: Optional[list[int]]) -> Path:
@@ -203,12 +205,12 @@ def make_stage_dags(
     """DAGs of every band of the stage (or only `bands`; None: the stage's bands) and their DAG list."""
     context = StageContext(settings, stage_name)
     stage = context.stage
-    make_dag = stage_dag_maker(context)
+    write_dag = stage_dag_writer(context)
     list_path = dag_list_path(context, bands)
     skipped_bands = []
     with open(list_path, "w") as dag_list:
         for freq in tqdm(bands or stage.freqs, desc=f"{stage.name} DAGs"):
-            dag_file = make_dag(context, freq)
+            dag_file = write_dag(context, freq)
             if dag_file is None:
                 skipped_bands.append(freq)
             else:

@@ -128,32 +128,10 @@ class PathManager:
         )
         return base / f"{taskname}.fts.{job_index}"
 
-    def outlier_file(
-        self, freq: int, taskname: str, stage: str, cluster: bool, location: str
-    ) -> Path:
-        """
-        Path of a stage's outlier file (clustered or not).
-
-        location:
-          "home"      under home_dir, written by a local collection
-          "osdf"      under <osdf_dir>/o4ab, written by an outlier-collection Condor job
-                      (OSG jobs can't transfer output straight back to the access point)
-          "existing"  the home path if that file exists, else the OSDF path (for readers)
-        """
-        if location == "existing":
-            home_path = self.outlier_file(freq, taskname, stage, cluster, "home")
-            return (
-                home_path
-                if home_path.exists()
-                else self.outlier_file(freq, taskname, stage, cluster, "osdf")
-            )
-        roots = {"home": self.home_dir, "osdf": self.osdf_dir / "o4ab"}
-        if location not in roots:
-            raise ValueError(
-                f"location must be 'home', 'osdf' or 'existing', not {location!r}"
-            )
+    def outlier_file(self, freq: int, taskname: str, stage: str, cluster: bool) -> Path:
+        """Path of a stage's outlier file (clustered or not) under home_dir."""
         base = (
-            roots[location]
+            self.home_dir
             / "results"
             / stage
             / self.target_name
