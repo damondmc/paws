@@ -473,7 +473,7 @@ class WorkflowManager:
 
     def _ul_transfer_args(
         self,
-        config_files: tuple[str, str, str],
+        config_files: tuple[str, ...],
         taskname: str,
         freq: int,
         metric_file: str,
@@ -510,6 +510,7 @@ class WorkflowManager:
         environment_file: str,
         data_file: str,
         search_file: str,
+        spindown_model_file: str,
         taskname: str,
         freq: int,
         stage: str,
@@ -604,7 +605,7 @@ class WorkflowManager:
         )
 
         arg_list = self._ul_transfer_args(
-            (environment_file, data_file, search_file),
+            (environment_file, data_file, search_file, spindown_model_file),
             taskname,
             freq,
             metric_file,
@@ -665,7 +666,7 @@ class WorkflowManager:
 
     def _outlier_transfer_args(
         self,
-        config_files: tuple[str, str, str],
+        config_files: tuple[str, ...],
         taskname: str,
         freq: int,
         stage: str,
@@ -730,6 +731,7 @@ class WorkflowManager:
         environment_file: str,
         data_file: str,
         search_file: str,
+        spindown_model_file: str,
         taskname: str,
         freq: int,
         stage: str,
@@ -817,7 +819,7 @@ class WorkflowManager:
         )
 
         arg_list = self._outlier_transfer_args(
-            (environment_file, data_file, search_file),
+            (environment_file, data_file, search_file, spindown_model_file),
             taskname,
             freq,
             stage,

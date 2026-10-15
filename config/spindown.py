@@ -1,6 +1,7 @@
 """Example spin-down ranges: the power law with braking index 2 to 7 and the target's age of 600 years."""
 
-from paws.params.models import SECONDS_PER_YEAR, PowerLawModel, SpindownModel
+from paws.definitions import SECONDS_PER_YEAR
+from paws.params.models import PowerLawModel, SpindownModel
 
 
 def spindown_model(freq: float) -> SpindownModel:

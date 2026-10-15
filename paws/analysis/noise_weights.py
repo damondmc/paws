@@ -9,6 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
+from paws.definitions import SECONDS_PER_DAY
+
 CHUNK_DAYS = 50  # SFTs are loaded this many days at a time
 
 
@@ -22,9 +24,11 @@ def band_noise_weight(sft_dir: Path, band: int) -> tuple[float, int]:
     first = catalog.data[0].header.epoch.gpsSeconds
     last = catalog.data[catalog.length - 1].header.epoch.gpsSeconds
     inverse_noise = []
-    for start in range(first, last + 1, CHUNK_DAYS * 86400):
+    for start in range(first, last + 1, CHUNK_DAYS * SECONDS_PER_DAY):
         chunk = lalpulsar.ReturnSFTCatalogTimeslice(
-            catalog, lal.LIGOTimeGPS(start), lal.LIGOTimeGPS(start + CHUNK_DAYS * 86400)
+            catalog,
+            lal.LIGOTimeGPS(start),
+            lal.LIGOTimeGPS(start + CHUNK_DAYS * SECONDS_PER_DAY),
         )
         if chunk.length == 0:
             continue

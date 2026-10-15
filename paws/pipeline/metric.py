@@ -1,11 +1,5 @@
-"""Segment list, data check, coverage plot and (optionally) Weave metric for a coherence time.
-
-Writes to <home_dir>/metricSetup/ (or out_dir)
-  o4ab_<detector>_timestamps.txt                    SFT timestamps of each detector
-  o4_<T>days_segments.txt                           segments of T days containing data of some detector
-  o4_<T>days_segments.png                           detector coverage and segments
-  o4ab_t<T>_s<N>.fts                                with make_metric_file (lalpulsar_WeaveSetup)
-"""
+"""`paws metric`: the segment list, data coverage plot and (with --metric) the Weave metric of a coherence time,
+written to <home_dir>/metricSetup/."""
 
 import shutil
 import subprocess
@@ -17,6 +11,7 @@ import numpy as np
 from jaxtyping import Float, Int
 from matplotlib.patches import Patch
 
+from paws.definitions import SECONDS_PER_DAY
 from paws.filepaths import PathManager
 from paws.settings import FixedSettings, Settings
 
@@ -52,7 +47,7 @@ def make_segments(
 ) -> Int[np.ndarray, "n_segment 2"]:
     """Consecutive (start, end) segments of tcoh_day days from START_TIME; empty segments are skipped by
     restarting at the next SFT."""
-    tcoh = tcoh_day * 86400
+    tcoh = tcoh_day * SECONDS_PER_DAY
     all_timestamps = np.unique(np.concatenate(list(timestamps.values())))
     end_time = all_timestamps.max() + SFT_DURATION
     segments, segment_start = [], START_TIME
@@ -107,7 +102,7 @@ def plot_coverage(
     tcoh_day: float,
     path: Path,
 ) -> None:
-    week = 7 * 86400
+    week = 7 * SECONDS_PER_DAY
     origin = int(segments[0, 0])
     n_detectors = len(timestamps)
     plt.style.use("paws")
