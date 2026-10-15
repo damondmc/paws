@@ -38,7 +38,7 @@ stages:
     image: paws.sif  # in <osdf_dir>/images; null: no container
 
     # outlier collection
-    keep: 2000  # candidates kept per Weave toplist before the mean2F threshold
+    n_keep: 2000  # candidates kept per Weave toplist before the mean2F threshold
     thresholds: null
     cluster: true
     separate_saturated: true  # saturated jobs in their own result table

@@ -161,7 +161,7 @@ def determine_efficiency(
     cluster: bool,
     work_in_local_dir: bool,
     save_intermediate: bool = False,
-) -> tuple[float, Union[str, Path]]:
+) -> tuple[float, Path]:
     """
     Runs the injections in parallel (one Weave run per row of search_data / injection_data) and returns
     (detection efficiency, outlier file).
@@ -208,16 +208,19 @@ def determine_efficiency(
     outlier_file_path = result_manager.make_outlier(
         taskname,
         freq,
+        stage,
         mean2f_th,
         n_inj,
-        n_processes=1,
-        num_toplist=num_toplist,
-        stage=stage,
-        freq_deriv_order=freq_deriv_order,
+        n_keep=num_toplist,
+        order=freq_deriv_order,
         n_sky=n_sky,
         cluster=cluster,
-        work_in_local_dir=work_in_local_dir,
+        separate_saturated=False,
+        is_search=False,
         is_injection=True,
+        n_processes=1,
+        n_threads=n_cpu,
+        work_in_local_dir=work_in_local_dir,
     )
 
     if not save_intermediate:

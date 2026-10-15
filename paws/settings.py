@@ -153,7 +153,7 @@ class Stage(YamlModel):
     image: Optional[str]
 
     # outlier collection
-    keep: int  # candidates kept per Weave toplist (a follow-up: per seed) before the mean2F threshold
+    n_keep: int  # candidates kept per Weave toplist (a follow-up: per seed) before the mean2F threshold
     # thresholds/<name>.yaml of a follow-up of real candidates; null: none
     thresholds: Optional[str]
     cluster: bool  # also write the clustered outlier file
@@ -184,9 +184,9 @@ class Stage(YamlModel):
             raise ValueError(f"{self.name}: n_sky={self.n_sky} without a sky_grid")
         if self.is_injection and self.thresholds is not None:
             raise ValueError(f"{self.name}: an injection stage keeps every candidate")
-        if self.thresholds is not None and self.keep != 1:
+        if self.thresholds is not None and self.n_keep != 1:
             raise ValueError(
-                f"{self.name}: a thresholded follow-up keeps the loudest candidate per seed (keep: 1)"
+                f"{self.name}: a thresholded follow-up keeps the loudest candidate per seed (n_keep: 1)"
             )
         return self
 

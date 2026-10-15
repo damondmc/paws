@@ -4,6 +4,7 @@ from astropy.io import fits
 from weave_files import write_weave_result
 
 from paws.analysis.outlier import (
+    ReadJob,
     ResultAnalysisManager,
     loudest_rows,
     read_jobs,
@@ -11,6 +12,18 @@ from paws.analysis.outlier import (
 )
 
 TASKNAME = "TestTarget_followup-2_TCoh20_O2_50Hz"
+
+
+def write_job_results(paths, stage, mean2f_per_job):
+    """One Weave result file per job (jobs 1, 2, ...) with the given mean2F rows."""
+    for job_index, mean2fs in enumerate(mean2f_per_job, 1):
+        write_weave_result(
+            paths.weave_output_file(50, TASKNAME, job_index, stage),
+            [
+                {"freq": 50.0 + 0.001 * i, "mean2F": mean2f}
+                for i, mean2f in enumerate(mean2fs)
+            ],
+        )
 
 
 def seed_files(tmp_path, seed, mean2f_per_sky_point):
@@ -62,17 +75,96 @@ def test_read_jobs_same_with_processes(tmp_path):
         )
         for i in range(9)
     ]
-    jobs = [(i, i + 1, path, 4.5, 1000, 2, False) for i, path in enumerate(files)]
+    jobs = [ReadJob(i + 1, path, 4.5, 1000, 2, False) for i, path in enumerate(files)]
     single = read_jobs(jobs, n_processes=1, n_threads=2, desc="test")
     multi = read_jobs(jobs, n_processes=3, n_threads=2, desc="test")
-    assert [result[1] for result in multi] == list(range(1, 10))
+    assert [result.job_index for result in multi] == list(range(1, 10))
     for one, many in zip(single, multi):
-        assert one[:2] == many[:2] and one[5] == many[5]
-        assert list(one[2]["mean2F"]) == list(many[2]["mean2F"])
-    jobs.insert(4, (9, 10, tmp_path / "missing.fts", 4.5, 1000, 2, False))
+        assert one.job_index == many.job_index and one.spacing == many.spacing
+        assert list(one.outliers["mean2F"]) == list(many.outliers["mean2F"])
+    jobs.insert(4, ReadJob(10, tmp_path / "missing.fts", 4.5, 1000, 2, False))
     for n_processes in (1, 3):
         with pytest.raises(FileNotFoundError):
             read_jobs(jobs, n_processes=n_processes, n_threads=2, desc="test")
+
+
+def test_make_outlier_search(settings, paths):
+    """40 points (1 / f0_band) of one job each: point 3 saturates (n_keep=2), point 7 has one outlier."""
+    stage = "search-0"
+    mean2f_per_job = [[3.0]] * 40
+    mean2f_per_job[3] = [9.0, 8.0, 7.0]
+    mean2f_per_job[7] = [6.0, 3.0]
+    write_job_results(paths, stage, mean2f_per_job)
+    path = ResultAnalysisManager(settings).make_outlier(
+        TASKNAME,
+        50,
+        stage,
+        5.0,
+        n_points=40,
+        n_keep=2,
+        order=2,
+        n_sky=1,
+        cluster=True,
+        separate_saturated=True,
+        is_search=True,
+        is_injection=False,
+        n_processes=1,
+        n_threads=2,
+    )
+    assert path == paths.outlier_file(50, TASKNAME, stage, cluster=True)
+    with fits.open(paths.outlier_file(50, TASKNAME, stage, cluster=False)) as hdul:
+        assert hdul[0].header["HIERARCH mean2F_th"] == 5.0
+        assert hdul[0].header["HIERARCH df"] == pytest.approx(0.01)
+        outliers = hdul[f"{stage}_outlier"].data
+        assert list(outliers["mean2F"]) == [6.0]
+        assert list(outliers["mean2F threshold"]) == [5.0]
+        assert list(hdul[f"{stage}_sat_outlier"].data["mean2F"]) == [9.0]
+        info = hdul["info"].data
+        assert list(info["jobIndex"]) == list(range(1, 41))
+        assert list(np.flatnonzero(info["outliers"])) == [3, 7]
+        assert list(info["outliers"][[3, 7]]) == [2, 1]
+        assert list(np.flatnonzero(info["isSaturated"])) == [3]
+        non_sat = hdul["non_sat_band"].data["non_sat_band"]
+        assert len(non_sat) == 39 and 50.075 not in non_sat
+    with fits.open(path) as hdul:
+        assert hdul[0].header["HIERARCH cluster_n_spacing"] == (
+            settings.search.cluster_n_spacing
+        )
+        assert list(hdul[f"{stage}_outlier"].data["mean2F"]) == [6.0]
+        assert len(hdul["non_sat_band"].data) == 39
+        assert list(hdul["info_clustered"].data["noOutliersWithin"]) == [1]
+
+
+def test_make_outlier_pools_sky_points(settings, paths):
+    """Two points of two sky jobs each, one threshold per point: the candidates of a point are pooled."""
+    stage = "followup-1"
+    write_job_results(paths, stage, [[10.0, 6.0], [8.0, 7.0], [20.0], [30.0]])
+    ResultAnalysisManager(settings).make_outlier(
+        TASKNAME,
+        50,
+        stage,
+        np.array([5.0, 100.0]),
+        n_points=2,
+        n_keep=3,
+        order=2,
+        n_sky=2,
+        cluster=False,
+        separate_saturated=False,
+        is_search=False,
+        is_injection=False,
+        n_processes=1,
+        n_threads=2,
+    )
+    with fits.open(paths.outlier_file(50, TASKNAME, stage, cluster=False)) as hdul:
+        assert "mean2F_th" not in hdul[0].header
+        outliers = hdul[f"{stage}_outlier"].data
+        assert list(outliers["mean2F"]) == [10.0, 8.0, 7.0]
+        assert list(outliers["mean2F threshold"]) == [5.0] * 3
+        info = hdul["info"].data
+        assert list(info["jobIndex"]) == [1, 3]
+        assert list(info["outliers"]) == [3, 0]
+        assert list(info["isSaturated"]) == [1, 0]
+        assert "non_sat_band" not in hdul
 
 
 def test_write_loudest_outliers(tmp_path, settings, paths):

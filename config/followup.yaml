@@ -47,7 +47,7 @@ x-base: &base
   image: paws.sif  # in <osdf_dir>/images; null: no container
 
   # outlier collection
-  keep: 1  # the loudest candidate per seed
+  n_keep: 1  # the loudest candidate per seed
   thresholds: null
   cluster: true
   separate_saturated: false

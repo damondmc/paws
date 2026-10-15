@@ -152,7 +152,7 @@ def write_upperlimit_dag(context: StageContext, freq: int) -> Optional[Path]:
         None,
         df_grid=list(outlier_file_spacing(search_file, stage.order).values()),
         inj_freq_deriv_order=stage.injection.order,
-        num_toplist=stage.keep,
+        num_toplist=stage.n_keep,
         sky_radius=stage.sky_radius,
         spacing_alpha=stage.spacing_alpha,
         spacing_delta=stage.spacing_delta,

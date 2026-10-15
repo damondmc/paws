@@ -30,7 +30,7 @@ stages:
     spacing_delta: null
     injection: null
     upperlimit: false
-    keep: 2000
+    n_keep: 2000
     thresholds: null
     cluster: true
     separate_saturated: true

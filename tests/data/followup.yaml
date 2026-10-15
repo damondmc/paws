@@ -31,7 +31,7 @@ x-base: &base
   spacing_delta: null
   injection: null
   upperlimit: false
-  keep: 1
+  n_keep: 1
   thresholds: null
   cluster: true
   separate_saturated: false

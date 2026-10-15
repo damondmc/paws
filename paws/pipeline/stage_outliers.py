@@ -5,10 +5,11 @@ loudest candidate of each seed and applies the cuts of its threshold file."""
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional, Union
 
 import numpy as np
 from astropy.io import fits
+from jaxtyping import Float
 from tqdm import tqdm
 
 from paws.analysis.outlier import cached_loudest_rows
@@ -46,33 +47,37 @@ def total_semicoherent_templates(context: StageContext, freq: int, n_jobs: int) 
         return sum(executor.map(templates_of_job, range(1, n_jobs + 1)))
 
 
-def outlier_collection_kwargs(context: StageContext) -> dict[str, Any]:
+def collect_band_outliers(
+    context: StageContext,
+    freq: int,
+    mean2f_threshold: Union[float, Float[np.ndarray, " n_point"]],
+    n_points: int,
+) -> None:
+    """Outlier file of the band from the stage's settings (ResultAnalysisManager.make_outlier)."""
     stage = context.stage
-    return dict(
-        num_toplist=stage.keep,
-        stage=stage.name,
-        freq_deriv_order=stage.order,
+    context.result_manager.make_outlier(
+        context.taskname(freq),
+        freq,
+        stage.name,
+        mean2f_threshold,
+        n_points,
+        n_keep=stage.n_keep,
+        order=stage.order,
         n_sky=stage.n_sky,
         cluster=stage.cluster,
-        work_in_local_dir=False,
         separate_saturated=stage.separate_saturated,
+        is_search=stage.is_search,
         is_injection=stage.is_injection,
         n_processes=N_PROCESSES,
-        max_workers=N_THREADS,
+        n_threads=N_THREADS,
     )
 
 
 def collect_search_outliers(context: StageContext, freq: int) -> None:
-    n_jobs = context.search_params(freq).size
-    n_templates = total_semicoherent_templates(context, freq, n_jobs)
+    n_points = context.search_params(freq).size
+    n_templates = total_semicoherent_templates(context, freq, n_points)
     mean2f_threshold = search_mean2f_threshold(n_templates, context.stage.n_seg)
-    context.result_manager.make_outlier(
-        context.taskname(freq),
-        freq,
-        mean2f_threshold,
-        n_jobs,
-        **outlier_collection_kwargs(context),
-    )
+    collect_band_outliers(context, freq, mean2f_threshold, n_points)
 
 
 def collect_injection_outliers(context: StageContext, freq: int) -> None:
@@ -81,12 +86,8 @@ def collect_injection_outliers(context: StageContext, freq: int) -> None:
         print(f"{freq} Hz: no {context.prev_stage.name} outlier file, skipped")
         return
     mean2f_threshold = fits.getval(search_file, "mean2F_th", 0)
-    context.result_manager.make_outlier(
-        context.taskname(freq),
-        freq,
-        mean2f_threshold,
-        context.stage.injection.n_inj,
-        **outlier_collection_kwargs(context),
+    collect_band_outliers(
+        context, freq, mean2f_threshold, context.stage.injection.n_inj
     )
 
 
@@ -94,13 +95,7 @@ def collect_injection_followup_outliers(context: StageContext, freq: int) -> Non
     seed_rows, _ = read_seed_rows(context.settings, context.paths, context.stage, freq)
     if seed_rows is None or len(seed_rows) == 0:
         return
-    context.result_manager.make_outlier(
-        context.taskname(freq),
-        freq,
-        np.zeros(len(seed_rows)),
-        len(seed_rows),
-        **outlier_collection_kwargs(context),
-    )
+    collect_band_outliers(context, freq, np.zeros(len(seed_rows)), len(seed_rows))
 
 
 # -------------------- follow-up of real candidates --------------------

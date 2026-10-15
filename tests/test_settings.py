@@ -107,7 +107,7 @@ def test_stage_in_both_files_rejected(config_dir):
 
 def test_thresholded_followup_keeps_loudest_only(config_dir):
     raw = stage_fields(config_dir, "followup-2")
-    raw["keep"] = 10
+    raw["n_keep"] = 10
     with pytest.raises(ValidationError):
         Stage.model_validate(raw)
 
