@@ -9,7 +9,11 @@ import numpy as np
 from jaxtyping import Float, Shaped
 from tqdm import tqdm
 
-from paws.definitions import ext_param_name, phase_param_name
+from paws.definitions import (
+    WEAVE_EXTRA_STATISTICS,
+    ext_param_name,
+    phase_param_name,
+)
 from paws.filepaths import PathManager, make_dir
 from paws.fits_io import FITSTableRow
 from paws.settings import FixedSettings
@@ -85,11 +89,10 @@ class WorkflowManager:
 
     def _get_execution_kwargs(self, n_seg: int) -> dict[str, Union[str, float, int]]:
         """Helper to generate common keyword arguments for the search executable."""
-        extra_stats = "coh2F_det,mean2F,coh2F_det,mean2F_det"
         kwargs = {
             "semi-max-mismatch": self.settings.search.semi_mm,
             "toplist-limit": self.num_top_list,
-            "extra-statistics": extra_stats,
+            "extra-statistics": WEAVE_EXTRA_STATISTICS,
         }
 
         if n_seg != 1:

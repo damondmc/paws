@@ -7,6 +7,9 @@ SECONDS_PER_YEAR = 365.25 * SECONDS_PER_DAY
 
 MPLSTYLE = Path(__file__).with_name("paws.mplstyle")  # plt.style.use(MPLSTYLE)
 
+# Weave --extra-statistics
+WEAVE_EXTRA_STATISTICS = "coh2F_det,mean2F,coh2F_det,mean2F_det"
+
 
 def phase_param_name(order: int) -> tuple[list[str], list[str]]:
     """(frequency parameter names, their spacing names) up to spin-down order `order`."""

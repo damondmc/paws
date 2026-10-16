@@ -1,22 +1,25 @@
 #!/opt/paws/.venv/bin/python
+"""Upper-limit job of one band: injection sets at strains around the h0 estimate, each run through Weave, until the
+sigmoid fit of their detection efficiencies gives h95; the outlier file of the confirmation set at h95 gets the fit."""
+
 import argparse
 import logging
 import sys
 import time
 from itertools import count
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 from astropy.io import fits
 from jaxtyping import Shaped
 
 from paws.analysis.sigmoid import SigmoidFitter, find_h95
-from paws.definitions import phase_param_name
+from paws.definitions import WEAVE_EXTRA_STATISTICS, phase_param_name
 from paws.jobs.weave_runner import determine_efficiency
 from paws.params.injections import InjectionParamGenerator
 from paws.settings import FixedSettings
 
-# Configure Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -29,187 +32,139 @@ def log_section(title: str) -> None:
 
 
 def print_args(args: argparse.Namespace) -> None:
-    """Prints arguments in a clean, aligned table."""
     log_section("JOB PARAMETERS")
-    arg_dict = vars(args)
-    for key, value in arg_dict.items():
+    for key, value in vars(args).items():
         logging.info(f"{key:<25} : {value}")
     logging.info("=" * 60 + "\n")
 
 
 def scale_injection(
-    ip_data: Shaped[np.ndarray, " n_injection"], h0: float
+    injection_rows: Shaped[np.ndarray, " n_injection"], h0: float
 ) -> Shaped[np.ndarray, " n_injection"]:
-    """Scales injection parameters to a specific h0."""
-    params = ip_data.copy()
-    params["aCross"] *= h0
-    params["aPlus"] *= h0
-    return params
+    """The injection rows (drawn at h0 = 1) at strain h0."""
+    rows = injection_rows.copy()
+    rows["aCross"] *= h0
+    rows["aPlus"] *= h0
+    return rows
 
 
-def main() -> None:
+def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
+    """The job's command line (written by WorkflowManager.make_upperlimit_dag)."""
     parser = argparse.ArgumentParser(
-        description="Calculate 95% Upper Limit via Injection."
+        description="The 95 % upper limit of a band from injections."
     )
-    parser.add_argument("--environment_file", type=str, required=True)
-    parser.add_argument("--data_file", type=str, required=True)
-    parser.add_argument("--search_file", type=str, required=True)
-    parser.add_argument(
-        "--n_spacing",
-        type=float,
-        required=True,
-        help="search range around each injection: this many template spacings each side",
-    )
-    parser.add_argument(
-        "--taskname", type=str, default="GalacticCenter_upperlimit_TCoh5_O2_97Hz"
-    )
-    parser.add_argument("--freq", type=int, default=97)
-    parser.add_argument("--stage", type=str, default="upperlimit")
-    parser.add_argument("--freq_deriv_order", type=int, default=2)
-    parser.add_argument(
+    add = parser.add_argument
+    add("--environment_file", required=True)
+    add("--data_file", required=True)
+    add("--search_file", required=True)
+    add("--taskname", required=True)
+    add("--freq", type=int, required=True)
+    add("--stage", required=True)
+    add("--freq_deriv_order", type=int, required=True, help="spin-down order searched")
+    add(
         "--df_grid",
         type=float,
         nargs="+",
-        default=[1e-6, 1e-13, 1e-20],
-        help="Frequency grid spacing for searches.",
+        required=True,
+        help="search spacings df df1dot ...",
     )
-    parser.add_argument("--inj_freq_deriv_order", type=int, default=4)
-    parser.add_argument("--sft_files", type=str, default="./")
-    parser.add_argument(
-        "--metric_file", type=str, default="./Start1368970000_TCoh432000_N107_Spin2.fts"
-    )
-    parser.add_argument("--n_inj", type=int, default=200)
-    parser.add_argument(
-        "--num_toplist",
+    add(
+        "--inj_freq_deriv_order",
         type=int,
-        default=1,
-        help="Number of top candidates to consider for efficiency calculation.",
+        required=True,
+        help="spin-down order injected",
     )
-    parser.add_argument(
-        "--h0_est", type=float, default=6e-26, help="Initial h0 estimate"
-    )
-    parser.add_argument(
-        "--mean2f_th",
-        type=float,
-        default=6.46124359109492,
-        help="Detection threshold for mean2F",
-    )
-    parser.add_argument(
+    add("--sft_files", required=True)
+    add("--metric_file", required=True, help="Weave setup file")
+    add("--n_inj", type=int, required=True, help="injections per set")
+    add("--num_toplist", type=int, required=True, help="candidates kept per Weave run")
+    add("--h0_est", type=float, required=True, help="first h0 estimate")
+    add("--mean2f_th", type=float, required=True, help="mean2F detection threshold")
+    add(
         "--non_sat_bands",
         type=float,
         nargs="+",
-        default=[20.0, 20.1],
-        help="Non-saturated frequency bands to use for injections",
+        required=True,
+        help="sub-bands the injections are drawn from",
     )
-    parser.add_argument("--sky_radius", type=float, default=1e-4)
-    parser.add_argument("--spacing_alpha", type=float, default=None)
-    parser.add_argument("--spacing_delta", type=float, default=None)
-    parser.add_argument("--cluster", action="store_true")
-    parser.add_argument("--work_in_local_dir", action="store_true")
-    parser.add_argument("--save_intermediate", action="store_true")
-    parser.add_argument("--n_cpus", type=int, default=32)
+    add("--sky_radius", type=float, required=True)
+    add("--spacing_alpha", type=float, default=None)
+    add("--spacing_delta", type=float, default=None)
+    add(
+        "--n_spacing",
+        type=float,
+        required=True,
+        help="search range around each injection: this many spacings each side",
+    )
+    add("--cluster", action="store_true")
+    add("--work_in_local_dir", action="store_true")
+    add("--save_intermediate", action="store_true")
+    add("--n_cpus", type=int, required=True)
+    return parser.parse_args(argv)
 
-    args = parser.parse_args()
-    print_args(args)
 
-    taskname = args.taskname
-    freq = args.freq
-    stage = args.stage
-    freq_deriv_order = args.freq_deriv_order
-    df_grid = args.df_grid
-    inj_freq_deriv_order = args.inj_freq_deriv_order
-    sft_files = args.sft_files
-    metric_file = args.metric_file
-    n_inj = args.n_inj
-    h0_est = args.h0_est
-    mean2f_th = args.mean2f_th
-    non_sat_bands = args.non_sat_bands
-    sky_radius = args.sky_radius
-    spacing_alpha = args.spacing_alpha
-    spacing_delta = args.spacing_delta
-    num_toplist = args.num_toplist
+def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
+    """h95 of the band from injection sets around h0_est (see find_h95), then the confirmation set at h95; its
+    outlier file gets h95, dh95, the efficiency at h95 and the fit (H0_P, POPT, PCOV tables). Returns that file."""
+    freq, taskname, stage, n_inj = args.freq, args.taskname, args.stage, args.n_inj
+    metric_file = (
+        Path(args.metric_file).name if args.work_in_local_dir else args.metric_file
+    )
+    with fits.open(metric_file) as hdul:
+        ref_time = float(hdul[0].header["DATE-OBS GPS"])
+        n_seg = len(hdul["segments"].data)
 
-    non_sat_bands = np.array(non_sat_bands)
-
-    extra_stats = "coh2F_det,mean2F,coh2F_det,mean2F_det"
-
-    t0 = time.time()
-    np.random.seed(0)
-
-    # Load Configuration
-    settings = FixedSettings(args.environment_file, args.data_file, args.search_file)
-    target = settings.target
-
-    weave_exe = settings.environment.executables.weave_path
-
-    if args.work_in_local_dir:
-        metric_file = Path(metric_file).name
-
-    # Get reference time from metric file
-    ref_time = float(fits.getval(metric_file, "DATE-OBS GPS", ext=0))
-
-    # Get spacing
-    _, freq_deriv_names = phase_param_name(freq_deriv_order)
-    if len(df_grid) != len(freq_deriv_names):
+    _, spacing_names = phase_param_name(args.freq_deriv_order)
+    if len(args.df_grid) != len(spacing_names):
         raise ValueError(
-            f"Length of df_grid ({len(df_grid)}) does not match number of frequency derivative names ({len(freq_deriv_names)})"
+            f"df_grid has {len(args.df_grid)} spacings for spin-down order {args.freq_deriv_order}"
         )
-    # spacing = {name: fits.getval(args.data_file, name, ext=0) for name in freq_deriv_names}
-    df_grid = {name: df_grid[i] for i, name in enumerate(freq_deriv_names)}
-
-    f0_band = settings.data.f0_band
-
-    # 2. Initialize Managers
-    model = settings.spindown_model(freq)
-    injection_generator = InjectionParamGenerator(
-        model=model, ref_time=ref_time, f0_band=f0_band
+    target = settings.target
+    generator = InjectionParamGenerator(
+        model=settings.spindown_model(freq),
+        ref_time=ref_time,
+        f0_band=settings.data.f0_band,
     )
-
-    search_data, injection_data = (
-        injection_generator.generate_injections_and_search_ranges(
-            alpha=target.alpha,
-            dalpha=target.dalpha,
-            delta=target.delta,
-            ddelta=target.ddelta,
-            non_sat_bands=non_sat_bands,
-            spacing=df_grid,
-            h0=1.0,
-            freq=freq,
-            n_inj=n_inj,
-            n_spacing=args.n_spacing,
-            inj_freq_deriv_order=inj_freq_deriv_order,
-            freq_deriv_order=freq_deriv_order,
-            sky_radius=sky_radius,
-            spacing_alpha=spacing_alpha,
-            spacing_delta=spacing_delta,
-        )
+    search_data, injection_data = generator.generate_injections_and_search_ranges(
+        alpha=target.alpha,
+        dalpha=target.dalpha,
+        delta=target.delta,
+        ddelta=target.ddelta,
+        non_sat_bands=np.array(args.non_sat_bands),
+        spacing=dict(zip(spacing_names, args.df_grid)),
+        h0=1.0,
+        freq=freq,
+        n_inj=n_inj,
+        n_spacing=args.n_spacing,
+        inj_freq_deriv_order=args.inj_freq_deriv_order,
+        freq_deriv_order=args.freq_deriv_order,
+        sky_radius=args.sky_radius,
+        spacing_alpha=args.spacing_alpha,
+        spacing_delta=args.spacing_delta,
     )
+    search_rows = search_data[str(freq)].data
+    injection_rows = injection_data[str(freq)].data
+    n_sky = len(search_rows) // n_inj
+    logging.info(f"{n_inj} injections, {n_sky} sky points per injection")
 
-    # n_sky: number of sky-point jobs per injection (1 if no tiling)
-    n_sky = len(search_data[str(freq)].data) // n_inj
-
-    print(
-        f"Generated injection and search parameter tables for {n_inj} injections and {n_sky} sky points per injection."
-    )
-
-    # 4. The efficiency of one injection set at a strain: the Weave runs of run_taskname
     def run_injections(run_taskname: str, h0: float) -> tuple[float, Path]:
+        """(detection efficiency, outlier file) of the injection set at strain h0, run as run_taskname."""
         return determine_efficiency(
             taskname=run_taskname,
             stage=stage,
             settings=settings,
             freq=freq,
-            freq_deriv_order=freq_deriv_order,
+            freq_deriv_order=args.freq_deriv_order,
             n_sky=n_sky,
-            num_toplist=num_toplist,
-            n_seg=107,
-            sft_files=sft_files,
+            num_toplist=args.num_toplist,
+            n_seg=n_seg,
+            sft_files=args.sft_files,
             metric_file=metric_file,
-            extra_stats=extra_stats,
-            weave_exe=weave_exe,
-            search_data=search_data[str(freq)].data,
-            injection_data=scale_injection(injection_data[str(freq)].data, h0),
-            mean2f_th=mean2f_th,
+            extra_stats=WEAVE_EXTRA_STATISTICS,
+            weave_exe=settings.environment.executables.weave_path,
+            search_data=search_rows,
+            injection_data=scale_injection(injection_rows, h0),
+            mean2f_th=args.mean2f_th,
             n_cpu=args.n_cpus,
             cluster=args.cluster,
             work_in_local_dir=args.work_in_local_dir,
@@ -225,47 +180,52 @@ def main() -> None:
         logging.info(f"Run took {time.time() - run_t0:.2f}s | Efficiency: {eff:.2%}")
         return eff
 
-    # 5. h95 from the sigmoid fit, then the confirmation run at h95
     log_section("EFFICIENCY LOOP START")
     fitter = SigmoidFitter(target, n_inj=n_inj, n_amp=1)
-    limit = find_h95(efficiency_at, h0_est, fitter)
+    limit = find_h95(efficiency_at, args.h0_est, fitter)
     h95 = limit.h95
 
     logging.info(f"Performing final confirmation run at h95 = {h95:.3e}")
     eff, outlier_file_path = run_injections(taskname, h95)
     logging.info(f"Final Efficiency at h95: {eff * 100:.2f}%")
 
-    # 6. Update FITS Header with Results
     with fits.open(outlier_file_path, mode="update") as hdul:
-        # Header info
-        hdul[0].header["HIERARCH sky_radius"] = sky_radius
+        hdul[0].header["HIERARCH sky_radius"] = args.sky_radius
         hdul[0].header["h95"] = h95
         hdul[0].header["dh95"] = limit.dh95
-        hdul[0].header[f"p{args.n_inj}"] = round(eff * 100, 2)
-
-        # Append Sigmoid Data Tables
-        cols_h0_p = fits.ColDefs(
-            [
-                fits.Column(name="h0", format="E", array=limit.h0),
-                fits.Column(name="p", format="E", array=limit.efficiency),
-            ]
+        hdul[0].header[f"p{n_inj}"] = round(eff * 100, 2)
+        hdul.append(
+            fits.BinTableHDU.from_columns(
+                [
+                    fits.Column(name="h0", format="E", array=limit.h0),
+                    fits.Column(name="p", format="E", array=limit.efficiency),
+                ],
+                name="h0_p",
+            )
         )
-        hdul.append(fits.BinTableHDU.from_columns(cols_h0_p, name="h0_p"))
-
-        # Append Fit Params
-        col_popt = fits.Column(name="popt", format="E", array=fitter.popt)
-        hdul.append(fits.BinTableHDU.from_columns([col_popt], name="popt"))
-
-        # Flatten pcov if 2D for simple FITS storage, or use dimensions
-        col_pcov = fits.Column(
-            name="pcov",
-            format=f"{len(fitter.pcov.flatten())}E",
-            array=fitter.pcov.flatten(),
+        hdul.append(
+            fits.BinTableHDU.from_columns(
+                [fits.Column(name="popt", format="E", array=fitter.popt)], name="popt"
+            )
         )
-        hdul.append(fits.BinTableHDU.from_columns([col_pcov], name="pcov"))
-
+        pcov = fitter.pcov.flatten()
+        hdul.append(
+            fits.BinTableHDU.from_columns(
+                [fits.Column(name="pcov", format=f"{len(pcov)}E", array=pcov)],
+                name="pcov",
+            )
+        )
         hdul.flush()
+    return outlier_file_path
 
+
+def main(argv: Optional[list[str]] = None) -> None:
+    args = parse_args(argv)
+    print_args(args)
+    t0 = time.time()
+    np.random.seed(0)
+    settings = FixedSettings(args.environment_file, args.data_file, args.search_file)
+    upper_limit(settings, args)
     logging.info(f"Job completed. Total time: {time.time() - t0:.2f}s")
 
 
