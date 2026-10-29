@@ -67,7 +67,7 @@ class StageContext:
             target.ddelta,
             freq,
             freq + 1,
-            df=self.settings.data.f0_band,
+            df=self.settings.search.f0_band,
             df1=self.stage.search_df1,
             df2=self.stage.search_df2,
         )

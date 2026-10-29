@@ -343,7 +343,7 @@ class ResultAnalysisManager:
         non_sat_hdu = None
         if is_search:
             # the f0_band sub-bands of the 1 Hz band whose jobs are all unsaturated
-            f0_band = self.settings.data.f0_band
+            f0_band = self.settings.search.f0_band
             saturated = info["isSaturated"].reshape(int(1.0 / f0_band), -1).any(axis=1)
             sub_bands = np.flatnonzero(~saturated)
             non_sat = np.recarray((len(sub_bands),), dtype=[("non_sat_band", ">f8")])

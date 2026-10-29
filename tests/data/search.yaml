@@ -1,6 +1,7 @@
 # Test search: the initial search stage and the settings fixed once it has run.
 semi_mm: 0.2
 coh_mm: 0.1
+f0_band: 0.025
 cluster_n_spacing: 10.0
 
 spindown_model: spindown.py

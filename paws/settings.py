@@ -93,7 +93,6 @@ class Data(YamlModel):
     sft_dir: Path
     detectors: list[str]
     ref_time: int  # GPS reference time of the frequency parameters
-    f0_band: float  # Hz, frequency sub-band of one Weave job
     target: Target
 
 
@@ -216,6 +215,7 @@ class Search(YamlModel):
 
     semi_mm: float  # maximum mismatch of the semicoherent metric
     coh_mm: float  # maximum mismatch of the coherent metrics (each segment)
+    f0_band: float  # Hz, frequency sub-band of one Weave job
     # outliers within this many template spacings are one cluster
     cluster_n_spacing: float
     # Python file in the config directory defining spindown_model(freq) -> paws.params.models.SpindownModel

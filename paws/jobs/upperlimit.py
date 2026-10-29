@@ -123,7 +123,7 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
     generator = InjectionParamGenerator(
         model=settings.spindown_model(freq),
         ref_time=ref_time,
-        f0_band=settings.data.f0_band,
+        f0_band=settings.search.f0_band,
     )
     search_data, injection_data = generator.generate_injections_and_search_ranges(
         alpha=target.alpha,

@@ -3,7 +3,6 @@ sft_source: TEST_SFTS
 sft_dir: /replaced/sfts
 detectors: [H1, L1]
 ref_time: 1400000000
-f0_band: 0.025
 
 target:
   name: TestTarget

@@ -48,7 +48,7 @@ def write_injection_dag(context: StageContext, freq: int) -> Optional[Path]:
     generator = InjectionParamGenerator(
         model=context.spindown_model(freq),
         ref_time=context.settings.data.ref_time,
-        f0_band=context.settings.data.f0_band,
+        f0_band=context.settings.search.f0_band,
     )
     search_params, injection_params = generator.generate_injections_and_search_ranges(
         alpha=target.alpha,
