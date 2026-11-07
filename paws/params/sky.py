@@ -1,9 +1,15 @@
-"""Sky positions: random samples in a cap and hexagonal grids of offsets around a target."""
+"""Sky positions: random samples in a cap and the Weave sky-lattice offsets around a target."""
 
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union
 
+import lal
+import lalpulsar
 import numpy as np
 from jaxtyping import Float
+
+# widths of the freq [Hz], f1dot [Hz/s], ..., f4dot [Hz/s^4] ranges of the sky-lattice tiling
+SPIN_WIDTHS = (1e-11, 1e-16, 1e-25, 1e-34, 1e-43)
 
 
 def sample_sky_positions(
@@ -44,78 +50,91 @@ def sample_sky_positions(
     return alpha, delta
 
 
-def hexagonal_grid(num_layers: int) -> dict[int, list[tuple[int, int, float, float]]]:
+def compute_lattice_points(
+    setup_file: Union[str, Path],
+    alpha: tuple[float, float],
+    delta: tuple[float, float],
+    spins: list[tuple[float, float]],
+    semi_mismatch: float,
+    coh_mismatch: Optional[float] = None,
+) -> Float[np.ndarray, "n_point n_column"]:
+    """Semicoherent lattice points, built as lalpulsar_Weave builds them (supersky metric, A_n* lattice).
+
+    Args:
+        setup_file: WeaveSetup metric file.
+        alpha: (lo, hi) right ascension in rad.
+        delta: (lo, hi) declination in rad.
+        spins: (lo, hi) ranges of freq (Hz), f1dot (Hz/s), f2dot (Hz/s^2), ...; the first 1 + n of them are used for
+            a metric of n spindowns.
+        semi_mismatch: maximum semicoherent mismatch.
+        coh_mismatch: maximum coherent mismatch (several segments); None for a single segment.
+
+    Returns:
+        (alpha, delta, freq, f1dot, ..., fndot) of each lattice point.
     """
-    Generates a hexagonal grid up to num_layers rings around the origin.
-
-    Returns a dict mapping layer index -> list of (q, r, i, j) tuples where
-    (q, r) are axial hex coordinates and (i, j) are 2D offsets in hex units:
-        i = q + r/2
-        j = r * sqrt(3)/2
-
-    Layer 0 always contains exactly one point: the origin (0, 0, 0, 0).
-    Multiply (i, j) by (spacing_alpha, spacing_delta) to get sky offsets (d_alpha, d_delta).
-    """
-    sqrt3_2 = np.sqrt(3) / 2.0
-    layer_points = {layer: [] for layer in range(num_layers + 1)}
-
-    for q in range(-num_layers, num_layers + 1):
-        for r in range(-num_layers, num_layers + 1):
-            if -q - r in range(-num_layers, num_layers + 1):
-                layer = max(abs(q), abs(r), abs(-q - r))
-                i = q + (r / 2.0)
-                j = r * sqrt3_2
-                layer_points[layer].append((q, r, i, j))
-
-    return layer_points
-
-
-def sky_hex_offsets(
-    sky_radius: float, spacing_alpha: Optional[float], spacing_delta: Optional[float]
-) -> tuple[Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"]]:
-    """
-    Returns (d_alpha, d_delta) offset arrays for a hex grid truncated to sky_radius.
-
-    Generates enough hex rings to cover sky_radius, then keeps only points whose
-    Euclidean offset sqrt((i*spacing_alpha)^2 + (j*spacing_delta)^2) <= sky_radius.
-    The origin (0, 0) is always first; remaining points are ordered layer by layer.
-
-    Parameters
-    ----------
-    sky_radius : float
-        Radius of the sky region to tile (radians). Points outside are discarded.
-    spacing_alpha : float
-        Step size per hex unit in the alpha direction (radians).
-    spacing_delta : float
-        Step size per hex unit in the delta direction (radians).
-
-    Returns
-    -------
-    d_alpha, d_delta : ndarray
-        Offset arrays; length depends on how many hex points fall within sky_radius.
-    """
-    if spacing_alpha is None or spacing_delta is None:
-        raise ValueError("spacing_alpha and spacing_delta must both be provided")
-    if spacing_alpha > spacing_delta:
-        print(
-            f"Warning: spacing_alpha ({spacing_alpha}) > spacing_delta ({spacing_delta}). "
-            "Typically spacing_alpha <= spacing_delta for equal sensitivity loss per sky point."
+    metrics = lalpulsar.FITSReadSuperskyMetrics(
+        lalpulsar.FITSFileOpenRead(str(setup_file))
+    )
+    lalpulsar.ScaleSuperskyMetricsFiducialFreq(metrics, spins[0][1])
+    lalpulsar.EqualizeReducedSuperskyMetricsFreqSpacing(
+        metrics, semi_mismatch if coh_mismatch is None else coh_mismatch, semi_mismatch
+    )
+    metric, transf = metrics.semi_rssky_metric, metrics.semi_rssky_transf
+    n_spins = metric.size1 - 2
+    if len(spins) < n_spins:
+        raise ValueError(
+            f"{setup_file}: metric of {n_spins - 1} spindowns, {len(spins) - 1} spindown ranges given"
         )
 
-    # Generate enough layers to fully cover sky_radius, plus one buffer ring
-    min_spacing = min(spacing_alpha, spacing_delta)
-    num_layers = int(np.ceil(sky_radius / min_spacing)) + 1
+    tiling = lalpulsar.CreateLatticeTiling(metric.size1)
+    lalpulsar.SetSuperskyPhysicalSkyBounds(tiling, metric, transf, *alpha, *delta)
+    for s, bounds in enumerate(spins[:n_spins]):
+        lalpulsar.SetSuperskyPhysicalSpinBound(tiling, transf, s, *bounds)
+    lalpulsar.SetTilingLatticeAndMetric(
+        tiling, lalpulsar.TILING_LATTICE_ANSTAR, metric, semi_mismatch
+    )
 
-    grid = hexagonal_grid(num_layers)
-    all_points = [pt for layer in sorted(grid) for pt in grid[layer]]
+    iterator = lalpulsar.CreateLatticeTilingIterator(tiling, metric.size1)
+    point, rows = lal.gsl_vector(metric.size1), []
+    while lalpulsar.NextLatticeTilingPoint(iterator, point) > 0:
+        phys = lalpulsar.PulsarDopplerParams()
+        lalpulsar.ConvertSuperskyToPhysicalPoint(phys, point, None, transf)
+        rows.append((phys.Alpha, phys.Delta, *phys.fkdot[:n_spins]))
+    return np.array(rows)
 
-    # Keep only points within sky_radius
-    filtered = [
-        (i, j)
-        for _, _, i, j in all_points
-        if np.sqrt((i * spacing_alpha) ** 2 + (j * spacing_delta) ** 2) <= sky_radius
-    ]
 
-    d_alpha = np.array([i * spacing_alpha for i, j in filtered])
-    d_delta = np.array([j * spacing_delta for i, j in filtered])
-    return d_alpha, d_delta
+def sky_lattice_offsets(
+    setup_file: Union[str, Path],
+    alpha: float,
+    delta: float,
+    sky_radius: float,
+    freq: float,
+    semi_mismatch: float,
+    coh_mismatch: Optional[float] = None,
+) -> tuple[Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"]]:
+    """Offsets from (alpha, delta) of the Weave sky-lattice points, padding included, that cover the box of
+    half-widths sky_radius / cos(delta) in right ascension and sky_radius in declination around it.
+
+    Args:
+        setup_file: WeaveSetup metric file.
+        alpha: right ascension of the box center in rad.
+        delta: declination of the box center in rad.
+        sky_radius: angular half-width of the box in rad.
+        freq: frequency of the lattice in Hz.
+        semi_mismatch: maximum semicoherent mismatch.
+        coh_mismatch: maximum coherent mismatch (several segments); None for a single segment.
+
+    Returns:
+        (d_alpha, d_delta) arrays in rad.
+    """
+    alpha_half_width = sky_radius / np.cos(delta)
+    points = compute_lattice_points(
+        setup_file,
+        (alpha - alpha_half_width, alpha + alpha_half_width),
+        (delta - sky_radius, delta + sky_radius),
+        [(freq - SPIN_WIDTHS[0], freq)] + [(0.0, width) for width in SPIN_WIDTHS[1:]],
+        semi_mismatch,
+        coh_mismatch,
+    )
+    sky_points = np.unique(points[:, :2], axis=0)
+    return sky_points[:, 0] - alpha, sky_points[:, 1] - delta

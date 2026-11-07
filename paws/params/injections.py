@@ -9,7 +9,7 @@ from jaxtyping import Float, Shaped
 
 from paws.definitions import ext_param_name, phase_param_name
 from paws.params.models import SpindownModel
-from paws.params.sky import sample_sky_positions, sky_hex_offsets
+from paws.params.sky import sample_sky_positions
 
 
 class InjectionParamGenerator:
@@ -102,26 +102,25 @@ class InjectionParamGenerator:
         inj_data: Shaped[np.ndarray, " n_injection"],
         freq_deriv_order: int,
         n_spacing: float = 1.0,
-        sky_radius: float = 0.0,
-        spacing_alpha: Optional[float] = None,
-        spacing_delta: Optional[float] = None,
+        sky_offsets: Optional[
+            tuple[Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"]]
+        ] = None,
     ) -> fits.BinTableHDU:
         """
         Generates the small search windows around the injections for Weave.
 
-        When sky_radius > 0 and spacings are provided, each injection gets n_sky rows
-        (one per hex-grid sky point within sky_radius), ordered as:
+        With sky_offsets (d_alpha, d_delta) from (alpha, delta), each injection gets n_sky rows
+        (one per sky point), ordered as:
         inj_0/sky_0, inj_0/sky_1, ..., inj_1/sky_0, inj_1/sky_1, ...
         Consecutive blocks of n_sky rows map to the same injection.
         """
         freq_names, deriv_names = phase_param_name(freq_deriv_order)
 
-        if sky_radius > 0 and spacing_alpha is not None and spacing_delta is not None:
-            d_alpha, d_delta = sky_hex_offsets(sky_radius, spacing_alpha, spacing_delta)
-            n_sky = len(d_alpha)
+        if sky_offsets is not None:
+            d_alpha, d_delta = sky_offsets
         else:
             d_alpha, d_delta = np.array([0.0]), np.array([0.0])
-            n_sky = 1
+        n_sky = len(d_alpha)
 
         n_inj = len(inj_data)
         n_rows = n_inj * n_sky
@@ -180,15 +179,16 @@ class InjectionParamGenerator:
         freq_deriv_order: int = 2,
         inj_freq_deriv_order: int = 4,
         sky_radius: float = 0.0,
-        spacing_alpha: Optional[float] = None,
-        spacing_delta: Optional[float] = None,
+        sky_offsets: Optional[
+            tuple[Float[np.ndarray, " n_sky"], Float[np.ndarray, " n_sky"]]
+        ] = None,
     ) -> tuple[dict[str, fits.BinTableHDU], dict[str, fits.BinTableHDU]]:
         """
         High-level wrapper to generate both Injection Parameters and Search Ranges: ({band: search ranges},
         {band: injection parameters}) with the band as a string key.
 
-        When sky_radius > 0 with spacings provided, each injection is searched at n_sky
-        hex-grid sky points within the cap. Both returned dicts contain n_inj * n_sky rows
+        The injections are drawn in the cap of radius sky_radius around (alpha, delta). With sky_offsets, each
+        injection is searched at the n_sky sky points (alpha + d_alpha, delta + d_delta). Both returned dicts contain n_inj * n_sky rows
         (injection params replicated per sky point). Consecutive blocks of n_sky rows belong
         to the same injection, matching what ResultAnalysisManager.make_outlier expects.
         """
@@ -210,9 +210,7 @@ class InjectionParamGenerator:
             ip_hdu.data,
             freq_deriv_order,
             n_spacing,
-            sky_radius=sky_radius,
-            spacing_alpha=spacing_alpha,
-            spacing_delta=spacing_delta,
+            sky_offsets=sky_offsets,
         )
 
         # 3. Replicate injection params to match search range row count

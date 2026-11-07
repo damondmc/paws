@@ -18,6 +18,7 @@ from paws.analysis.sigmoid import SigmoidFitter, find_h95
 from paws.definitions import WEAVE_EXTRA_STATISTICS, phase_param_name
 from paws.jobs.weave_runner import determine_efficiency
 from paws.params.injections import InjectionParamGenerator
+from paws.params.sky import sky_lattice_offsets
 from paws.settings import FixedSettings
 
 logging.basicConfig(
@@ -88,8 +89,11 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         help="sub-bands the injections are drawn from",
     )
     add("--sky_radius", type=float, required=True)
-    add("--spacing_alpha", type=float, default=None)
-    add("--spacing_delta", type=float, default=None)
+    add(
+        "--sky_metric_file",
+        default=None,
+        help="all-sky Weave setup file: search each injection at its sky lattice covering the sky_radius cap",
+    )
     add(
         "--n_spacing",
         type=float,
@@ -125,6 +129,19 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
         ref_time=ref_time,
         f0_band=settings.search.f0_band,
     )
+    sky_offsets = None
+    if args.sky_metric_file is not None:
+        sky_offsets = sky_lattice_offsets(
+            Path(args.sky_metric_file).name
+            if args.work_in_local_dir
+            else args.sky_metric_file,
+            target.alpha,
+            target.delta,
+            args.sky_radius,
+            freq + 1,
+            settings.search.semi_mm,
+            settings.search.coh_mm if n_seg != 1 else None,
+        )
     search_data, injection_data = generator.generate_injections_and_search_ranges(
         alpha=target.alpha,
         dalpha=target.dalpha,
@@ -139,8 +156,7 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
         inj_freq_deriv_order=args.inj_freq_deriv_order,
         freq_deriv_order=args.freq_deriv_order,
         sky_radius=args.sky_radius,
-        spacing_alpha=args.spacing_alpha,
-        spacing_delta=args.spacing_delta,
+        sky_offsets=sky_offsets,
     )
     search_rows = search_data[str(freq)].data
     injection_rows = injection_data[str(freq)].data

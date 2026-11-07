@@ -13,11 +13,11 @@ REQUIRED = (
 
 
 def test_parse_args():
-    args = parse_args(REQUIRED + ["--cluster", "--spacing_alpha", "2e-4"])
+    args = parse_args(REQUIRED + ["--cluster", "--sky_metric_file", "sky.fts"])
     assert args.freq == 50 and args.df_grid == [1e-6, 1e-13, 1e-20]
     assert args.non_sat_bands == [50.0, 50.1] and args.n_cpus == 8
     assert args.cluster and not args.work_in_local_dir
-    assert args.spacing_alpha == 2e-4 and args.spacing_delta is None
+    assert args.sky_metric_file == "sky.fts"
 
 
 def test_parse_args_has_no_defaults_for_the_run():

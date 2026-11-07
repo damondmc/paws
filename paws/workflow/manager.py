@@ -439,8 +439,7 @@ class WorkflowManager:
         mean2f_th: float,
         non_sat_bands: Float[np.ndarray, " n_subband"],
         sky_radius: float,
-        spacing_alpha: Optional[float],
-        spacing_delta: Optional[float],
+        sky_metric_file_local: Optional[str],
         n_spacing: float,
         cluster: bool,
         work_in_local_dir: bool,
@@ -463,10 +462,8 @@ class WorkflowManager:
             f"--sky_radius {sky_radius} --n_spacing {n_spacing} --n_cpus {request_cpu}"
         )
 
-        if spacing_alpha is not None:
-            arg_list_string += (
-                f" --spacing_alpha {spacing_alpha} --spacing_delta {spacing_delta}"
-            )
+        if sky_metric_file_local is not None:
+            arg_list_string += f" --sky_metric_file {sky_metric_file_local}"
         if cluster:
             arg_list_string += " --cluster"
         if work_in_local_dir:
@@ -482,6 +479,7 @@ class WorkflowManager:
         taskname: str,
         freq: int,
         metric_file: str,
+        sky_metric_file: Optional[str],
         stage: str,
         sft_files: list[str],
         cluster: bool,
@@ -495,6 +493,8 @@ class WorkflowManager:
         ]
         input_files_list.extend([str(s) for s in sft_files])
         input_files_list.append(str(metric_file))
+        if sky_metric_file is not None:
+            input_files_list.append(str(sky_metric_file))
 
         input_files_str = ", ".join(input_files_list)
 
@@ -530,8 +530,7 @@ class WorkflowManager:
         inj_freq_deriv_order: int = 4,
         num_toplist: int = 1,
         sky_radius: float = 1e-5,
-        spacing_alpha: Optional[float] = None,
-        spacing_delta: Optional[float] = None,
+        sky_metric_file: Optional[str] = None,
         h0_est: float = 6e-26,
         n_inj: int = 64,
         request_memory: str = "4GB",
@@ -578,8 +577,9 @@ class WorkflowManager:
             mean2f_th=mean2f_th,
             non_sat_bands=non_sat_bands,
             sky_radius=sky_radius,
-            spacing_alpha=spacing_alpha,
-            spacing_delta=spacing_delta,
+            sky_metric_file_local=(
+                Path(sky_metric_file).name if sky_metric_file else None
+            ),
             n_spacing=n_spacing,
             cluster=cluster,
             work_in_local_dir=work_in_local_dir,
@@ -614,6 +614,7 @@ class WorkflowManager:
             taskname,
             freq,
             metric_file,
+            sky_metric_file,
             stage,
             sft_files,
             cluster,

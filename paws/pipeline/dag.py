@@ -12,6 +12,7 @@ from tqdm import tqdm
 from paws.fits_io import outlier_file_spacing
 from paws.params.followup import FollowupParamGenerator
 from paws.params.injections import InjectionParamGenerator
+from paws.params.sky import sky_lattice_offsets
 from paws.pipeline.context import StageContext
 from paws.pipeline.seeds import read_seed_rows, seed_outlier_file, selected_seed_rows
 from paws.settings import Settings
@@ -50,6 +51,17 @@ def write_injection_dag(context: StageContext, freq: int) -> Optional[Path]:
         ref_time=context.settings.data.ref_time,
         f0_band=context.settings.search.f0_band,
     )
+    sky_offsets = None
+    if stage.sky_metric is not None:
+        sky_offsets = sky_lattice_offsets(
+            context.settings.sky_metric_path(stage),
+            target.alpha,
+            target.delta,
+            stage.sky_radius,
+            freq + 1,
+            context.settings.search.semi_mm,
+            context.settings.search.coh_mm if stage.n_seg != 1 else None,
+        )
     search_params, injection_params = generator.generate_injections_and_search_ranges(
         alpha=target.alpha,
         dalpha=target.dalpha,
@@ -64,8 +76,7 @@ def write_injection_dag(context: StageContext, freq: int) -> Optional[Path]:
         inj_freq_deriv_order=stage.injection.order,
         freq_deriv_order=stage.order,
         sky_radius=stage.sky_radius,
-        spacing_alpha=stage.spacing_alpha,
-        spacing_delta=stage.spacing_delta,
+        sky_offsets=sky_offsets,
     )
     return context.make_weave_dag(
         freq,
@@ -91,9 +102,6 @@ def followup_params(
         new_freq_deriv_order=stage.order,
         spacing=outlier_file_spacing(seed_file, prev_stage.order),
         n_spacing=context.settings.followup.n_spacing,
-        sky_radius=stage.sky_radius,
-        spacing_alpha=stage.spacing_alpha,
-        spacing_delta=stage.spacing_delta,
     )
 
 
@@ -154,8 +162,9 @@ def write_upperlimit_dag(context: StageContext, freq: int) -> Optional[Path]:
         inj_freq_deriv_order=stage.injection.order,
         num_toplist=stage.n_keep,
         sky_radius=stage.sky_radius,
-        spacing_alpha=stage.spacing_alpha,
-        spacing_delta=stage.spacing_delta,
+        sky_metric_file=(
+            context.settings.sky_metric_url(stage) if stage.sky_metric else None
+        ),
         h0_est=context.h0_by_freq()[freq],
         n_inj=stage.injection.n_inj,
         n_spacing=context.settings.followup.n_spacing,

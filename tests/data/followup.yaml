@@ -27,8 +27,7 @@ x-base: &base
   sky_grid: null
   n_sky: 1
   sky_radius: 0.0
-  spacing_alpha: null
-  spacing_delta: null
+  sky_metric: null
   injection: null
   upperlimit: false
   n_keep: 1

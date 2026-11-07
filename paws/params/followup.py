@@ -1,4 +1,4 @@
-"""Follow-up parameter tables: the search range around each seed, tiled over the sky grid."""
+"""Follow-up parameter tables: the search range around each seed."""
 
 from typing import Optional
 
@@ -9,7 +9,6 @@ from jaxtyping import Shaped
 
 from paws.definitions import phase_param_name
 from paws.params.models import SpindownModel
-from paws.params.sky import sky_hex_offsets
 
 
 class FollowupParamGenerator:
@@ -35,9 +34,6 @@ class FollowupParamGenerator:
         new_freq_deriv_order: int,
         spacing: dict[str, float],
         n_spacing: float,
-        sky_radius: float = 0.0,
-        spacing_alpha: Optional[float] = None,
-        spacing_delta: Optional[float] = None,
     ) -> fits.BinTableHDU:
         """
         Constructs the follow-up parameter table by expanding ranges.
@@ -110,19 +106,6 @@ class FollowupParamGenerator:
                 data.add_column(f4_min, name=freq_name)
                 data.add_column(f4_max - f4_min, name=freq_deriv_name)
 
-        # Sky tiling: replicate each outlier row for every hex-grid sky point.
-        # Ordering: outlier_0/sky_0, outlier_0/sky_1, ..., outlier_1/sky_0, ...
-        # so that consecutive blocks of n_sky rows map to the same outlier.
-        if sky_radius > 0 and spacing_alpha is not None and spacing_delta is not None:
-            d_alpha, d_delta = sky_hex_offsets(sky_radius, spacing_alpha, spacing_delta)
-            n_sky = len(d_alpha)
-            n_out = len(data)
-            idx = np.repeat(np.arange(n_out), n_sky)
-            sky_idx = np.tile(np.arange(n_sky), n_out)
-            data = data[idx]
-            data["alpha"] = data["alpha"] + d_alpha[sky_idx]
-            data["delta"] = data["delta"] + d_delta[sky_idx]
-
         return fits.BinTableHDU(data=data)
 
     def generate_search_ranges(
@@ -136,9 +119,6 @@ class FollowupParamGenerator:
         new_freq_deriv_order: int,
         spacing: dict[str, float],
         n_spacing: float = 1.0,
-        sky_radius: float = 0.0,
-        spacing_alpha: Optional[float] = None,
-        spacing_delta: Optional[float] = None,
     ) -> fits.BinTableHDU:
         """
         Main entry point to generate parameters.
@@ -159,9 +139,6 @@ class FollowupParamGenerator:
             new_freq_deriv_order,
             spacing,
             n_spacing,
-            sky_radius=sky_radius,
-            spacing_alpha=spacing_alpha,
-            spacing_delta=spacing_delta,
         )
 
         # Removed unused args: cluster, workInLocalDir are not used in logic anymore

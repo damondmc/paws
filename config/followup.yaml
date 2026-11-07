@@ -37,8 +37,7 @@ x-base: &base
   sky_grid: null
   n_sky: 1  # only the sky point of the seed
   sky_radius: 0.0
-  spacing_alpha: null
-  spacing_delta: null
+  sky_metric: null  # all-sky setup file for the injection sky lattice; null: the target only
   toplist: 2000  # Weave --toplist-limit
 
   # Condor jobs
@@ -68,9 +67,7 @@ stages:
     upperlimit: true
     # injections: spin-down order, number per band, h0 file relative to home_dir
     injection: {order: 4, n_inj: 200, h0_file: postprocess/data/h0_estimate.txt}
-    sky_radius: 1.25e-4  # spacing > sky_radius: a single sky point
-    spacing_alpha: 2.5e-4
-    spacing_delta: 2.5e-4
+    sky_radius: 1.25e-4  # radius [rad] of the injection sky cap
     tasks_per_job: 1
     request_memory: 16GB
     request_disk: 6GB
@@ -81,8 +78,6 @@ stages:
     prev: search-0
     injection: {order: 4, n_inj: 20, h0_file: postprocess/data/h0_upperlimit.txt}
     sky_radius: 1.25e-4
-    spacing_alpha: 2.5e-4
-    spacing_delta: 2.5e-4
     tasks_per_job: 20
     request_memory: 3GB
 

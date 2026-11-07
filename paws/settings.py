@@ -137,10 +137,11 @@ class Stage(YamlModel):
     # in the config directory: (d_alpha, d_delta) offsets around each seed
     sky_grid: Optional[str]
     n_sky: int  # sky points per seed; 1 without a sky_grid
-    # injections and upper limit: sky region radius and grid spacing [rad] around the target
+    # injections and upper limit: angular radius [rad] of the sky cap around the target the injections are drawn from
     sky_radius: float
-    spacing_alpha: Optional[float]
-    spacing_delta: Optional[float]
+    # in <osdf_dir>/metricSetup: all-sky WeaveSetup file (same segments as metric) whose sky lattice covering the cap
+    # each injection is searched at; null: the target only
+    sky_metric: Optional[str]
     toplist: int  # Weave --toplist-limit
 
     # Condor jobs
@@ -181,6 +182,8 @@ class Stage(YamlModel):
             raise ValueError(f"{self.name}: an upper limit needs injection")
         if self.sky_grid is None and self.n_sky != 1:
             raise ValueError(f"{self.name}: n_sky={self.n_sky} without a sky_grid")
+        if self.sky_metric is not None and self.sky_radius <= 0:
+            raise ValueError(f"{self.name}: sky_metric needs sky_radius > 0")
         if self.is_injection and self.thresholds is not None:
             raise ValueError(f"{self.name}: an injection stage keeps every candidate")
         if self.thresholds is not None and self.n_keep != 1:
@@ -528,6 +531,12 @@ class Settings(FixedSettings):
         return (
             "osdf://" + str(self.environment.osdf_dir.joinpath(*parts))[len("/osdf") :]
         )
+
+    def sky_metric_path(self, stage: Stage) -> Path:
+        return self.environment.osdf_dir / "metricSetup" / stage.sky_metric
+
+    def sky_metric_url(self, stage: Stage) -> str:
+        return self.osdf_url("metricSetup", stage.sky_metric)
 
     def metric_url(self, stage: Stage) -> str:
         return self.osdf_url("metricSetup", stage.metric)
