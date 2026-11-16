@@ -1,7 +1,13 @@
 import numpy as np
 import pytest
 
-from paws.analysis.sigmoid import BRACKET_FACTORS, SigmoidFitter, find_h95
+from paws.analysis.sigmoid import (
+    BRACKET_FACTORS,
+    MIN_SETS_NEAR_H95,
+    NEAR_H95_EFFICIENCY,
+    SigmoidFitter,
+    find_h95,
+)
 from paws.settings import Target
 
 TARGET = Target(name="T", alpha=0.0, delta=0.0, dalpha=0.0, ddelta=0.0)
@@ -47,6 +53,24 @@ def test_find_h95_stops_after_max_rounds():
             max_rounds=2,
         )
     assert len(tried) == len(BRACKET_FACTORS) + 2 * 2
+
+
+def test_find_h95_adds_sets_until_two_are_near_h95():
+    """From 1.2 * H95 the starting sets give efficiencies 0.05, 0.63, 0.997 and 1.0, none in [0.85, 0.99]."""
+    tried = []
+
+    def efficiency_at(h0):
+        tried.append(h0)
+        return true_efficiency(h0)
+
+    limit = find_h95(efficiency_at, 1.2 * H95, SigmoidFitter(TARGET, n_inj=200))
+    low, high = NEAR_H95_EFFICIENCY
+    assert not any(
+        low <= true_efficiency(1.2 * H95 * f) <= high for f in BRACKET_FACTORS
+    )
+    assert len(tried) > len(BRACKET_FACTORS)
+    assert sum(low <= p <= high for p in limit.efficiency) >= MIN_SETS_NEAR_H95
+    assert limit.h95 == pytest.approx(H95, rel=0.02)
 
 
 def test_find_h95_rejects_an_unconstrained_fit():

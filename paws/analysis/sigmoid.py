@@ -19,6 +19,10 @@ BRACKET_FACTORS = (
     1.0,
     1.5,
 )  # first strains tried, as factors of the h0 estimate
+NEAR_H95_EFFICIENCY = (0.85, 0.99)  # efficiency range of an injection set close to h95
+MIN_SETS_NEAR_H95 = (
+    2  # injection sets in NEAR_H95_EFFICIENCY needed before h95 is accepted
+)
 
 
 class UpperLimit(NamedTuple):
@@ -201,9 +205,12 @@ def find_h95(
     max_rounds: int = 20,
 ) -> UpperLimit:
     """h95 from the sigmoid fit of the efficiencies at BRACKET_FACTORS * h0_estimate, adding two strains
-    around h95 per round until its relative uncertainty is within tolerance."""
+    around h95 per round until its relative uncertainty is within tolerance and at least MIN_SETS_NEAR_H95
+    injection sets have an efficiency in NEAR_H95_EFFICIENCY. The two strains are h95 * (1 -+ step), step the
+    relative uncertainty but at least the tolerance."""
     h0_values = [h0_estimate * factor for factor in BRACKET_FACTORS]
     efficiencies = [efficiency_at(h0) for h0 in h0_values]
+    low, high = NEAR_H95_EFFICIENCY
     for _ in range(max_rounds):
         fitter.fit(np.array(h0_values), np.array(efficiencies))
         h95, dh95 = fitter.get_h_percentile(0.95)
@@ -212,12 +219,16 @@ def find_h95(
             raise RuntimeError(
                 f"the sigmoid fit does not constrain h95 (h95 = {h95:.3e} +- {dh95:.3e})"
             )
-        logging.info(f"h95 = {h95:.3e} +- {abs(relative):.2%}")
-        if abs(relative) <= tolerance:
+        n_near = sum(low <= efficiency <= high for efficiency in efficiencies)
+        logging.info(
+            f"h95 = {h95:.3e} +- {abs(relative):.2%}, {n_near} sets with efficiency in [{low}, {high}]"
+        )
+        if abs(relative) <= tolerance and n_near >= MIN_SETS_NEAR_H95:
             return UpperLimit(h95, dh95, np.array(h0_values), np.array(efficiencies))
-        for h0 in (h95 * (1 - relative), h95 * (1 + relative)):
+        step = max(abs(relative), tolerance)
+        for h0 in (h95 * (1 - step), h95 * (1 + step)):
             h0_values.append(h0)
             efficiencies.append(efficiency_at(h0))
     raise RuntimeError(
-        f"h95 did not converge to {tolerance:.0%} in {max_rounds} rounds"
+        f"h95 did not converge to {tolerance:.0%} with {MIN_SETS_NEAR_H95} sets near h95 in {max_rounds} rounds"
     )
