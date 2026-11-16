@@ -373,6 +373,13 @@ class FixedSettings:
         self.spindown_model_file = Path(search_file).parent / self.search.spindown_model
         self._spindown_module: Optional[ModuleType] = None
 
+    def __getstate__(self) -> dict:
+        """The pickled state (e.g. for multiprocessing workers) without the loaded spindown module, which
+        spindown_model reloads on first use."""
+        state = self.__dict__.copy()
+        state["_spindown_module"] = None
+        return state
+
     def spindown_model(self, freq: float) -> SpindownModel:
         """The spin-down ranges at freq: spindown_model(freq) of the search.yaml `spindown_model` script."""
         if self._spindown_module is None:

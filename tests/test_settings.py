@@ -1,5 +1,6 @@
 import copy
 import os
+import pickle
 from pathlib import Path
 
 import pytest
@@ -175,6 +176,17 @@ def test_tau_matches_formula(settings, freq):
     model = settings.spindown_model(freq)
     assert isinstance(model, PowerLawModel)
     assert (model.nc_min, model.nc_max, model.tau) == (2, 7, expected)
+
+
+def test_settings_pickle_after_spindown_model(settings):
+    """The upper-limit job passes the settings to multiprocessing workers after loading the spindown script."""
+    expected = settings.spindown_model(150)
+    model = pickle.loads(pickle.dumps(settings)).spindown_model(150)
+    assert (model.nc_min, model.nc_max, model.tau) == (
+        expected.nc_min,
+        expected.nc_max,
+        expected.tau,
+    )
 
 
 def test_spindown_model_script_checked(config_dir):
