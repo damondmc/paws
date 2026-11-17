@@ -36,6 +36,29 @@ def test_find_h95_converges_on_the_sigmoid():
     assert list(limit.efficiency) == [true_efficiency(h0) for h0 in tried]
 
 
+def test_fit_of_binomial_counts_is_unbiased_with_matching_errors():
+    """Over repeated draws of 200 injections per set, h95 scatters around H95 by about dh95."""
+    rng = np.random.default_rng(0)
+    h0 = H95 * np.array([0.5, 0.7, 0.9, 1.0, 1.1, 1.5])
+    p_true = np.array([true_efficiency(h) for h in h0])
+    pulls = []
+    for _ in range(300):
+        fitter = SigmoidFitter(TARGET, n_inj=200)
+        assert fitter.fit(h0, rng.binomial(200, p_true) / 200)
+        h95, dh95 = fitter.get_h_percentile(0.95)
+        pulls.append((h95 - H95) / dh95)
+    assert abs(np.mean(pulls)) < 0.2
+    assert 0.8 < np.std(pulls) < 1.2
+
+
+def test_fit_accepts_sets_at_zero_and_full_efficiency():
+    fitter = SigmoidFitter(TARGET, n_inj=200)
+    assert fitter.fit(
+        H95 * np.array([0.3, 0.8, 1.0, 2.0]), np.array([0.0, 0.6, 0.94, 1.0])
+    )
+    assert np.all(np.isfinite(fitter.pcov))
+
+
 def test_find_h95_stops_after_max_rounds():
     """A zero tolerance is never reached: two refinement strains per round, then an error."""
     tried = []

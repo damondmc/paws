@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from jaxtyping import Float
 from matplotlib.figure import Figure
-from scipy.optimize import curve_fit
+from scipy.optimize import minimize
 
 from paws.settings import Target
 
@@ -78,9 +78,9 @@ class SigmoidFitter:
     def binomial_error(
         self, y: Float[np.ndarray, " n_h0"], n: int
     ) -> Float[np.ndarray, " n_h0"]:
-        """Calculates standard error for binomial distribution."""
+        """Binomial standard error of the efficiencies, for the error bars of the plot."""
         err = np.sqrt(y * (1.0 - y) / n)
-        # Avoid zero error for fitting weights
+        # a visible error bar at 0 and 100 % efficiency
         err[err == 0] = 1.0 / n
         return err
 
@@ -90,31 +90,48 @@ class SigmoidFitter:
         efficiency_list: Float[np.ndarray, " n_h0"],
     ) -> bool:
         """
-        Fits the sigmoid curve to the h0 vs efficiency data.
+        Maximum-likelihood fit of the sigmoid to the h0 vs efficiency data: the number of detected injections
+        of each set is binomial(injPerPoint, sigmoid(h0)). popt is (steepness, midpoint) in the rescaled h0 and
+        pcov its covariance from the Fisher information. Returns False if the fit does not converge to an
+        increasing sigmoid.
         """
-        h0_arr = np.array(h0_list)
-        p_arr = np.array(efficiency_list)
-
-        # if not np.any((p_arr > 0.8) & (p_arr < 0.96)):
-        #     warnings.warn("Warning: Data lacks points in the critical 80%-96% efficiency range.")
-
-        err = self.binomial_error(p_arr, self.injPerPoint)
+        h0_arr = np.asarray(h0_list, dtype=float)
+        n = self.injPerPoint
+        n_detected = np.round(np.asarray(efficiency_list) * n)
         x_norm = self._rescale_h0(h0_arr, h0_arr)
+        # rows (x, 1), so that predictor_matrix @ (a, b) = a * x + b; the negative
+        # log-likelihood is convex in (a, b)
+        predictor_matrix = np.column_stack([x_norm, np.ones_like(x_norm)])
 
-        # Initial guess: steepness=5, midpoint=0 (normalized)
-        try:
-            self.popt, self.pcov = curve_fit(
-                self.sigmoid,
-                x_norm,
-                p_arr,
-                p0=[5.0, 0.0],
-                sigma=err,
-                absolute_sigma=True,
+        def nll(theta: Float[np.ndarray, "2"]) -> float:
+            z = predictor_matrix @ theta
+            return np.sum(
+                n_detected * np.logaddexp(0, -z) + (n - n_detected) * np.logaddexp(0, z)
             )
-            return True
-        except RuntimeError as e:
-            print(f"Sigmoid fitting failed: {e}")
+
+        def grad(theta: Float[np.ndarray, "2"]) -> Float[np.ndarray, "2"]:
+            return predictor_matrix.T @ (
+                n * self.sigmoid(predictor_matrix @ theta, 1.0, 0.0) - n_detected
+            )
+
+        def hess(theta: Float[np.ndarray, "2"]) -> Float[np.ndarray, "2 2"]:
+            q = self.sigmoid(predictor_matrix @ theta, 1.0, 0.0)
+            return predictor_matrix.T @ (predictor_matrix * (n * q * (1 - q))[:, None])
+
+        result = minimize(
+            nll, x0=np.array([5.0, 0.0]), jac=grad, hess=hess, method="trust-exact"
+        )
+        a, b = result.x
+        if not result.success or a <= 0:
+            logging.warning(
+                f"Sigmoid fitting failed: {result.message} (steepness {a:.3g})"
+            )
             return False
+        # (k, x0) = (a, -b / a)
+        jacobian = np.array([[1.0, 0.0], [b / a**2, -1.0 / a]])
+        self.popt = np.array([a, -b / a])
+        self.pcov = jacobian @ np.linalg.inv(hess(result.x)) @ jacobian.T
+        return True
 
     def get_h_percentile(self, percentile: float = 0.95) -> tuple[float, float]:
         """
@@ -212,7 +229,8 @@ def find_h95(
     efficiencies = [efficiency_at(h0) for h0 in h0_values]
     low, high = NEAR_H95_EFFICIENCY
     for _ in range(max_rounds):
-        fitter.fit(np.array(h0_values), np.array(efficiencies))
+        if not fitter.fit(np.array(h0_values), np.array(efficiencies)):
+            raise RuntimeError("the sigmoid fit does not constrain h95")
         h95, dh95 = fitter.get_h_percentile(0.95)
         relative = dh95 / h95
         if not np.isfinite(relative) or h95 <= 0:
