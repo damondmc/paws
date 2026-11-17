@@ -16,7 +16,7 @@ from jaxtyping import Shaped
 
 from paws.analysis.sigmoid import SigmoidFitter, find_h95
 from paws.definitions import WEAVE_EXTRA_STATISTICS, phase_param_name
-from paws.jobs.weave_runner import determine_efficiency
+from paws.jobs.weave_runner import EfficiencyRun, determine_efficiency
 from paws.params.injections import InjectionParamGenerator
 from paws.params.sky import sky_lattice_offsets
 from paws.settings import FixedSettings
@@ -47,6 +47,35 @@ def scale_injection(
     rows["aCross"] *= h0
     rows["aPlus"] *= h0
     return rows
+
+
+def injection_sets_hdu(sets: list[tuple[float, EfficiencyRun]]) -> fits.BinTableHDU:
+    """INJECTION_SETS table of the (strain, run) injection sets in run order, the last being the confirmation set
+    at h95. Columns: h0, confirmation, efficiency, and per injection loudest_mean2F and detected."""
+    h0 = np.array([h0 for h0, _ in sets])
+    runs = [run for _, run in sets]
+    n_inj = len(runs[0].detected)
+    confirmation = np.arange(len(runs)) == len(runs) - 1
+    return fits.BinTableHDU.from_columns(
+        [
+            fits.Column(name="h0", format="D", array=h0),
+            fits.Column(name="confirmation", format="L", array=confirmation),
+            fits.Column(
+                name="efficiency", format="D", array=[run.efficiency for run in runs]
+            ),
+            fits.Column(
+                name="loudest_mean2F",
+                format=f"{n_inj}E",
+                array=np.stack([run.loudest_mean2f for run in runs]),
+            ),
+            fits.Column(
+                name="detected",
+                format=f"{n_inj}L",
+                array=np.stack([run.detected for run in runs]),
+            ),
+        ],
+        name="injection_sets",
+    )
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
@@ -109,7 +138,9 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
 def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
     """h95 of the band from injection sets around h0_est (see find_h95), then the confirmation set at h95; its
-    outlier file gets h95, dh95, the efficiency at h95 and the fit (H0_P, POPT, PCOV tables). Returns that file."""
+    outlier file gets h95, dh95, the efficiency at h95, the fit (H0_P, POPT, PCOV tables), every set with the
+    loudest mean2F of each injection (INJECTION_SETS) and the injections at h0 = 1 (INJECTION_POPULATION).
+    Returns that file."""
     freq, taskname, stage, n_inj = args.freq, args.taskname, args.stage, args.n_inj
     metric_file = (
         Path(args.metric_file).name if args.work_in_local_dir else args.metric_file
@@ -163,9 +194,11 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
     n_sky = len(search_rows) // n_inj
     logging.info(f"{n_inj} injections, {n_sky} sky points per injection")
 
-    def run_injections(run_taskname: str, h0: float) -> tuple[float, Path]:
-        """(detection efficiency, outlier file) of the injection set at strain h0, run as run_taskname."""
-        return determine_efficiency(
+    sets: list[tuple[float, EfficiencyRun]] = []
+
+    def run_injections(run_taskname: str, h0: float) -> EfficiencyRun:
+        """The injection set at strain h0, run as run_taskname and appended to sets."""
+        run = determine_efficiency(
             taskname=run_taskname,
             stage=stage,
             settings=settings,
@@ -186,13 +219,15 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
             work_in_local_dir=args.work_in_local_dir,
             save_intermediate=args.save_intermediate,
         )
+        sets.append((h0, run))
+        return run
 
     run_index = count()
 
     def efficiency_at(h0: float) -> float:
         logging.info(f"Testing h0 = {h0:.3e}")
         run_t0 = time.time()
-        eff, _ = run_injections(f"{taskname}_{next(run_index)}", h0)
+        eff = run_injections(f"{taskname}_{next(run_index)}", h0).efficiency
         logging.info(f"Run took {time.time() - run_t0:.2f}s | Efficiency: {eff:.2%}")
         return eff
 
@@ -202,7 +237,8 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
     h95 = limit.h95
 
     logging.info(f"Performing final confirmation run at h95 = {h95:.3e}")
-    eff, outlier_file_path = run_injections(taskname, h95)
+    confirmation = run_injections(taskname, h95)
+    eff, outlier_file_path = confirmation.efficiency, confirmation.outlier_file
     logging.info(f"Final Efficiency at h95: {eff * 100:.2f}%")
 
     with fits.open(outlier_file_path, mode="update") as hdul:
@@ -230,6 +266,11 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
                 [fits.Column(name="pcov", format=f"{len(pcov)}E", array=pcov)],
                 name="pcov",
             )
+        )
+        hdul.append(injection_sets_hdu(sets))
+        # injection_rows repeats each injection over its n_sky search points
+        hdul.append(
+            fits.BinTableHDU(data=injection_rows[::n_sky], name="injection_population")
         )
         hdul.flush()
     return outlier_file_path

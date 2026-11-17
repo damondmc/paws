@@ -1,20 +1,43 @@
 """Weave runs of the upper-limit job: one process per injection, then the detection efficiency."""
 
+import logging
 import subprocess
 from collections.abc import Iterable
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Union
+from typing import NamedTuple, Union
 
 import numpy as np
 from astropy.io import fits
-from jaxtyping import Shaped
+from jaxtyping import Bool, Float, Shaped
 
 from paws.analysis.outlier import ResultAnalysisManager
 from paws.definitions import phase_param_name
 from paws.filepaths import PathManager, make_dir
 from paws.fits_io import FITSTableRow
 from paws.settings import FixedSettings
+
+
+class EfficiencyRun(NamedTuple):
+    """One injection set: its detection efficiency and outlier file, and per injection the loudest mean2F over
+    its n_sky Weave runs and whether that reaches the mean2F threshold."""
+
+    efficiency: float
+    outlier_file: Path
+    loudest_mean2f: Float[np.ndarray, " n_inj"]
+    detected: Bool[np.ndarray, " n_inj"]
+
+
+def loudest_mean2f(result_files: list[str], n_sky: int) -> Float[np.ndarray, " n_inj"]:
+    """Loudest mean2F of each injection over its n_sky consecutive Weave result files (-inf if all their
+    toplists are empty)."""
+    loudest = np.full(len(result_files), np.nan)
+    for i, path in enumerate(result_files):
+        with fits.open(path) as hdul:
+            data = hdul[1].data
+            if data is not None and len(data) > 0:
+                loudest[i] = np.max(data["mean2F"])
+    return np.nanmax(loudest.reshape(-1, n_sky), axis=1, initial=-np.inf)
 
 
 def delete_files(result_file_list: Iterable[Union[str, Path]]) -> None:
@@ -161,10 +184,10 @@ def determine_efficiency(
     cluster: bool,
     work_in_local_dir: bool,
     save_intermediate: bool = False,
-) -> tuple[float, Path]:
+) -> EfficiencyRun:
     """
-    Runs the injections in parallel (one Weave run per row of search_data / injection_data) and returns
-    (detection efficiency, outlier file).
+    Runs the injections in parallel (one Weave run per row of search_data / injection_data) and returns the
+    detection efficiency, the outlier file and the loudest mean2F of each injection.
     """
     paths = PathManager(settings)
     result_manager = ResultAnalysisManager(settings)
@@ -223,6 +246,7 @@ def determine_efficiency(
         work_in_local_dir=work_in_local_dir,
     )
 
+    loudest = loudest_mean2f(results, n_sky)
     if not save_intermediate:
         delete_files(results)
 
@@ -232,5 +256,10 @@ def determine_efficiency(
     print(
         f"{eff * 100:.2f}% ({n_outlier}/{n_inj}) above mean2F threshold. \nSaved to {outlier_file_path}."
     )
+    detected = loudest >= mean2f_th
+    if detected.sum() != n_outlier:
+        logging.warning(
+            f"{detected.sum()} injections with loudest mean2F >= {mean2f_th} but {n_outlier} outliers"
+        )
 
-    return eff, outlier_file_path
+    return EfficiencyRun(eff, outlier_file_path, loudest, detected)
