@@ -1,6 +1,7 @@
 #!/opt/paws/.venv/bin/python
-"""Upper-limit job of one band: injection sets at strains around the h0 estimate, each run through Weave, until the
-sigmoid fit of their detection efficiencies gives h95; the outlier file of the confirmation set at h95 gets the fit."""
+"""Upper-limit job of one band: injection sets at strains around the h0 estimate locate h95, injections drawn at
+their own strains around it give h95 from a sigmoid fit, each run through Weave; the outlier file of the confirmation
+set at h95 gets the fit."""
 
 import argparse
 import logging
@@ -8,11 +9,11 @@ import sys
 import time
 from itertools import count
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 from astropy.io import fits
-from jaxtyping import Shaped
+from jaxtyping import Bool, Float, Shaped
 
 from paws.analysis.sigmoid import SigmoidFitter, find_h95
 from paws.definitions import WEAVE_EXTRA_STATISTICS, phase_param_name
@@ -40,9 +41,10 @@ def print_args(args: argparse.Namespace) -> None:
 
 
 def scale_injection(
-    injection_rows: Shaped[np.ndarray, " n_injection"], h0: float
+    injection_rows: Shaped[np.ndarray, " n_injection"],
+    h0: Union[float, Float[np.ndarray, " n_injection"]],
 ) -> Shaped[np.ndarray, " n_injection"]:
-    """The injection rows (drawn at h0 = 1) at strain h0."""
+    """The injection rows (drawn at h0 = 1) at strain h0, one strain for all rows or one per row."""
     rows = injection_rows.copy()
     rows["aCross"] *= h0
     rows["aPlus"] *= h0
@@ -75,6 +77,47 @@ def injection_sets_hdu(sets: list[tuple[float, EfficiencyRun]]) -> fits.BinTable
             ),
         ],
         name="injection_sets",
+    )
+
+
+def drawn_injections_hdu(
+    draws: list[
+        tuple[
+            Shaped[np.ndarray, " n_drawn"],
+            Float[np.ndarray, " n_drawn"],
+            EfficiencyRun,
+        ]
+    ],
+) -> fits.BinTableHDU:
+    """DRAWN_INJECTIONS table of the (injections at h0 = 1, strains, run) rounds of drawn injections, one row
+    per injection: the injection parameters, round, h0, detected and loudest_mean2F. h95 is fitted to the last
+    round."""
+    population = np.concatenate([np.asarray(rows) for rows, _, _ in draws])
+    extra = [
+        fits.Column(
+            name="round",
+            format="J",
+            array=np.concatenate(
+                [np.full(len(h0), i) for i, (_, h0, _) in enumerate(draws)]
+            ),
+        ),
+        fits.Column(
+            name="h0", format="D", array=np.concatenate([h0 for _, h0, _ in draws])
+        ),
+        fits.Column(
+            name="detected",
+            format="L",
+            array=np.concatenate([run.detected for _, _, run in draws]),
+        ),
+        fits.Column(
+            name="loudest_mean2F",
+            format="E",
+            array=np.concatenate([run.loudest_mean2f for _, _, run in draws]),
+        ),
+    ]
+    return fits.BinTableHDU.from_columns(
+        fits.BinTableHDU(data=population).columns + fits.ColDefs(extra),
+        name="drawn_injections",
     )
 
 
@@ -137,10 +180,12 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
 
 def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
-    """h95 of the band from injection sets around h0_est (see find_h95), then the confirmation set at h95; its
-    outlier file gets h95, dh95, the efficiency at h95, the fit (H0_P, POPT, PCOV tables), every set with the
-    loudest mean2F of each injection (INJECTION_SETS) and the injections at h0 = 1 (INJECTION_POPULATION).
-    Returns that file."""
+    """h95 of the band (see find_h95): starting sets of n_inj injections around h0_est, then injections drawn
+    at their own strains around h95, then a confirmation set of n_inj new injections at h95. Its outlier file gets
+    h95, dh95, the confirmation efficiency at h95 (p<n_inj>, in %), the fit to the drawn injections (POPT, PCOV),
+    the starting and confirmation sets with the loudest mean2F of each injection (INJECTION_SETS), the drawn
+    injections (DRAWN_INJECTIONS) and the injections at h0 = 1 of the starting and confirmation sets
+    (INJECTION_POPULATION, CONFIRMATION_POPULATION). Returns that file."""
     freq, taskname, stage, n_inj = args.freq, args.taskname, args.stage, args.n_inj
     metric_file = (
         Path(args.metric_file).name if args.work_in_local_dir else args.metric_file
@@ -173,32 +218,40 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
             settings.search.semi_mm,
             settings.search.coh_mm if n_seg != 1 else None,
         )
-    search_data, injection_data = generator.generate_injections_and_search_ranges(
-        alpha=target.alpha,
-        dalpha=target.dalpha,
-        delta=target.delta,
-        ddelta=target.ddelta,
-        non_sat_bands=np.array(args.non_sat_bands),
-        spacing=dict(zip(spacing_names, args.df_grid)),
-        h0=1.0,
-        freq=freq,
-        n_inj=n_inj,
-        n_spacing=args.n_spacing,
-        inj_freq_deriv_order=args.inj_freq_deriv_order,
-        freq_deriv_order=args.freq_deriv_order,
-        sky_radius=args.sky_radius,
-        sky_offsets=sky_offsets,
-    )
-    search_rows = search_data[str(freq)].data
-    injection_rows = injection_data[str(freq)].data
+
+    def draw_population(
+        n: int,
+    ) -> tuple[Shaped[np.ndarray, " n_row"], Shaped[np.ndarray, " n_row"]]:
+        """Search and injection rows (at h0 = 1) of n new injections, n_sky rows per injection."""
+        search_data, injection_data = generator.generate_injections_and_search_ranges(
+            alpha=target.alpha,
+            dalpha=target.dalpha,
+            delta=target.delta,
+            ddelta=target.ddelta,
+            non_sat_bands=np.array(args.non_sat_bands),
+            spacing=dict(zip(spacing_names, args.df_grid)),
+            h0=1.0,
+            freq=freq,
+            n_inj=n,
+            n_spacing=args.n_spacing,
+            inj_freq_deriv_order=args.inj_freq_deriv_order,
+            freq_deriv_order=args.freq_deriv_order,
+            sky_radius=args.sky_radius,
+            sky_offsets=sky_offsets,
+        )
+        return search_data[str(freq)].data, injection_data[str(freq)].data
+
+    search_rows, injection_rows = draw_population(n_inj)
     n_sky = len(search_rows) // n_inj
     logging.info(f"{n_inj} injections, {n_sky} sky points per injection")
 
-    sets: list[tuple[float, EfficiencyRun]] = []
-
-    def run_injections(run_taskname: str, h0: float) -> EfficiencyRun:
-        """The injection set at strain h0, run as run_taskname and appended to sets."""
-        run = determine_efficiency(
+    def run_injections(
+        run_taskname: str,
+        search_rows: Shaped[np.ndarray, " n_row"],
+        injection_rows: Shaped[np.ndarray, " n_row"],
+    ) -> EfficiencyRun:
+        """The injection rows (already at their strains), run as run_taskname."""
+        return determine_efficiency(
             taskname=run_taskname,
             stage=stage,
             settings=settings,
@@ -212,32 +265,69 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
             extra_stats=WEAVE_EXTRA_STATISTICS,
             weave_exe=settings.environment.executables.weave_path,
             search_data=search_rows,
-            injection_data=scale_injection(injection_rows, h0),
+            injection_data=injection_rows,
             mean2f_th=args.mean2f_th,
             n_cpu=args.n_cpus,
             cluster=args.cluster,
             work_in_local_dir=args.work_in_local_dir,
             save_intermediate=args.save_intermediate,
         )
-        sets.append((h0, run))
-        return run
 
     run_index = count()
+    sets: list[tuple[float, EfficiencyRun]] = []
+    draws: list[
+        tuple[
+            Shaped[np.ndarray, " n_drawn"], Float[np.ndarray, " n_drawn"], EfficiencyRun
+        ]
+    ] = []
 
     def efficiency_at(h0: float) -> float:
+        """Efficiency of the starting injections at strain h0."""
         logging.info(f"Testing h0 = {h0:.3e}")
         run_t0 = time.time()
-        eff = run_injections(f"{taskname}_{next(run_index)}", h0).efficiency
-        logging.info(f"Run took {time.time() - run_t0:.2f}s | Efficiency: {eff:.2%}")
-        return eff
+        run = run_injections(
+            f"{taskname}_{next(run_index)}",
+            search_rows,
+            scale_injection(injection_rows, h0),
+        )
+        sets.append((h0, run))
+        logging.info(
+            f"Run took {time.time() - run_t0:.2f}s | Efficiency: {run.efficiency:.2%}"
+        )
+        return run.efficiency
+
+    def detected_at(h0: Float[np.ndarray, " n_drawn"]) -> Bool[np.ndarray, " n_drawn"]:
+        """Which of len(h0) new injections, each at its own strain, are detected."""
+        logging.info(
+            f"Drawing {len(h0)} injections at h0 {h0.min():.3e} - {h0.max():.3e}"
+        )
+        run_t0 = time.time()
+        drawn_search, drawn_injection = draw_population(len(h0))
+        run = run_injections(
+            f"{taskname}_{next(run_index)}",
+            drawn_search,
+            scale_injection(drawn_injection, np.repeat(h0, n_sky)),
+        )
+        # drawn_injection repeats each injection over its n_sky search points
+        draws.append((drawn_injection[::n_sky], h0, run))
+        logging.info(
+            f"Run took {time.time() - run_t0:.2f}s | Efficiency: {run.efficiency:.2%}"
+        )
+        return run.detected
 
     log_section("EFFICIENCY LOOP START")
     fitter = SigmoidFitter(target, n_inj=n_inj, n_amp=1)
-    limit = find_h95(efficiency_at, args.h0_est, fitter)
+    limit = find_h95(efficiency_at, detected_at, args.h0_est, fitter)
     h95 = limit.h95
 
-    logging.info(f"Performing final confirmation run at h95 = {h95:.3e}")
-    confirmation = run_injections(taskname, h95)
+    logging.info(
+        f"Performing final confirmation run at h95 = {h95:.3e} with new injections"
+    )
+    confirmation_search, confirmation_injection = draw_population(n_inj)
+    confirmation = run_injections(
+        taskname, confirmation_search, scale_injection(confirmation_injection, h95)
+    )
+    sets.append((h95, confirmation))
     eff, outlier_file_path = confirmation.efficiency, confirmation.outlier_file
     logging.info(f"Final Efficiency at h95: {eff * 100:.2f}%")
 
@@ -246,15 +336,6 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
         hdul[0].header["h95"] = h95
         hdul[0].header["dh95"] = limit.dh95
         hdul[0].header[f"p{n_inj}"] = round(eff * 100, 2)
-        hdul.append(
-            fits.BinTableHDU.from_columns(
-                [
-                    fits.Column(name="h0", format="E", array=limit.h0),
-                    fits.Column(name="p", format="E", array=limit.efficiency),
-                ],
-                name="h0_p",
-            )
-        )
         hdul.append(
             fits.BinTableHDU.from_columns(
                 [fits.Column(name="popt", format="E", array=fitter.popt)], name="popt"
@@ -268,9 +349,15 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
             )
         )
         hdul.append(injection_sets_hdu(sets))
-        # injection_rows repeats each injection over its n_sky search points
+        hdul.append(drawn_injections_hdu(draws))
+        # the injection rows repeat each injection over its n_sky search points
         hdul.append(
             fits.BinTableHDU(data=injection_rows[::n_sky], name="injection_population")
+        )
+        hdul.append(
+            fits.BinTableHDU(
+                data=confirmation_injection[::n_sky], name="confirmation_population"
+            )
         )
         hdul.flush()
     return outlier_file_path

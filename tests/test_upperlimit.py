@@ -3,7 +3,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from paws.jobs.upperlimit import injection_sets_hdu, parse_args, scale_injection
+from paws.jobs.upperlimit import (
+    drawn_injections_hdu,
+    injection_sets_hdu,
+    parse_args,
+    scale_injection,
+)
 from paws.jobs.weave_runner import EfficiencyRun, loudest_mean2f
 from tests.weave_files import write_weave_result
 
@@ -38,6 +43,13 @@ def test_scale_injection():
     assert scaled["psi"][0] == 7.0 and rows["aPlus"][0] == 1.0
 
 
+def test_scale_injection_with_one_strain_per_row():
+    rows = np.array([(1.0, 0.5), (2.0, 1.0)], dtype=[("aPlus", "f8"), ("aCross", "f8")])
+    scaled = scale_injection(rows, np.array([1e-25, 3e-25]))
+    assert scaled["aPlus"].tolist() == [1e-25, 6e-25]
+    assert scaled["aCross"].tolist() == [0.5e-25, 3e-25]
+
+
 def test_loudest_mean2f_pools_the_sky_points_of_each_injection(tmp_path):
     """Two injections with two sky points each; the second injection's first toplist is empty."""
     loudest = [
@@ -66,3 +78,21 @@ def test_injection_sets_hdu_marks_the_last_set_as_confirmation():
     assert data["efficiency"].tolist() == [0.5, 1.0]
     assert np.array_equal(data["loudest_mean2F"], loudest)
     assert np.array_equal(data["detected"], detected)
+
+
+def test_drawn_injections_hdu_has_one_row_per_injection_of_every_round():
+    dtype = [("Freq", "f8"), ("aPlus", "f8")]
+    rounds = [
+        (np.array([(50.1, 1.0), (50.2, 0.5)], dtype=dtype), np.array([1e-25, 2e-25])),
+        (np.array([(50.3, 0.8)], dtype=dtype), np.array([3e-25])),
+    ]
+    draws = [
+        (rows, h0, EfficiencyRun(0.5, Path("r.fts"), 6.0 + h0 * 1e25, h0 > 1.5e-25))
+        for rows, h0 in rounds
+    ]
+    data = drawn_injections_hdu(draws).data
+    assert data["Freq"].tolist() == [50.1, 50.2, 50.3]
+    assert data["round"].tolist() == [0, 0, 1]
+    assert data["h0"].tolist() == [1e-25, 2e-25, 3e-25]
+    assert data["detected"].tolist() == [False, True, True]
+    assert data["loudest_mean2F"].tolist() == pytest.approx([7.0, 8.0, 9.0])

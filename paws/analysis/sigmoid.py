@@ -7,7 +7,7 @@ from typing import NamedTuple, Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
-from jaxtyping import Float
+from jaxtyping import Bool, Float, Real
 from matplotlib.figure import Figure
 from scipy.optimize import minimize
 
@@ -19,19 +19,22 @@ BRACKET_FACTORS = (
     1.0,
     1.5,
 )  # first strains tried, as factors of the h0 estimate
-NEAR_H95_EFFICIENCY = (0.85, 0.99)  # efficiency range of an injection set close to h95
-MIN_SETS_NEAR_H95 = (
-    2  # injection sets in NEAR_H95_EFFICIENCY needed before h95 is accepted
-)
+DRAW_WINDOW = (
+    0.8,
+    1.2,
+)  # range of h0 / h95 over which the strains of the drawn injections are log-uniform
 
 
 class UpperLimit(NamedTuple):
-    """h95 with its fit uncertainty and the (strain, efficiency) points it was fitted to, in run order."""
+    """h95 with its fit uncertainty, the starting sets (strain, efficiency) and the drawn injections of the
+    round that gave h95 (strain, detected)."""
 
     h95: float
     dh95: float
-    h0: Float[np.ndarray, " n_run"]
-    efficiency: Float[np.ndarray, " n_run"]
+    h0: Float[np.ndarray, " n_set"]
+    efficiency: Float[np.ndarray, " n_set"]
+    drawn_h0: Float[np.ndarray, " n_drawn"]
+    drawn_detected: Bool[np.ndarray, " n_drawn"]
 
 
 class SigmoidFitter:
@@ -90,14 +93,28 @@ class SigmoidFitter:
         efficiency_list: Float[np.ndarray, " n_h0"],
     ) -> bool:
         """
-        Maximum-likelihood fit of the sigmoid to the h0 vs efficiency data: the number of detected injections
-        of each set is binomial(injPerPoint, sigmoid(h0)). popt is (steepness, midpoint) in the rescaled h0 and
-        pcov its covariance from the Fisher information. Returns False if the fit does not converge to an
-        increasing sigmoid.
+        Maximum-likelihood fit of the sigmoid to the efficiencies of injection sets of injPerPoint injections
+        each (see fit_counts). Returns False if the fit does not converge to an increasing sigmoid.
         """
-        h0_arr = np.asarray(h0_list, dtype=float)
         n = self.injPerPoint
         n_detected = np.round(np.asarray(efficiency_list) * n)
+        return self.fit_counts(h0_list, n_detected, np.full(len(n_detected), n))
+
+    def fit_counts(
+        self,
+        h0_list: Float[np.ndarray, " n_h0"],
+        n_detected: Real[np.ndarray, " n_h0"],
+        n_injected: Real[np.ndarray, " n_h0"],
+    ) -> bool:
+        """
+        Maximum-likelihood fit of the sigmoid to detection counts: n_detected of n_injected injections at each
+        h0 is binomial(n_injected, sigmoid(h0)), so single injections (n_injected = 1) at their own h0 can be
+        fitted. popt is (steepness, midpoint) in the rescaled h0 and pcov its covariance from the Fisher
+        information. Returns False if the fit does not converge to an increasing sigmoid.
+        """
+        h0_arr = np.asarray(h0_list, dtype=float)
+        n = np.asarray(n_injected, dtype=float)
+        k = np.asarray(n_detected, dtype=float)
         x_norm = self._rescale_h0(h0_arr, h0_arr)
         # rows (x, 1), so that predictor_matrix @ (a, b) = a * x + b; the negative
         # log-likelihood is convex in (a, b)
@@ -105,13 +122,11 @@ class SigmoidFitter:
 
         def nll(theta: Float[np.ndarray, "2"]) -> float:
             z = predictor_matrix @ theta
-            return np.sum(
-                n_detected * np.logaddexp(0, -z) + (n - n_detected) * np.logaddexp(0, z)
-            )
+            return np.sum(k * np.logaddexp(0, -z) + (n - k) * np.logaddexp(0, z))
 
         def grad(theta: Float[np.ndarray, "2"]) -> Float[np.ndarray, "2"]:
             return predictor_matrix.T @ (
-                n * self.sigmoid(predictor_matrix @ theta, 1.0, 0.0) - n_detected
+                n * self.sigmoid(predictor_matrix @ theta, 1.0, 0.0) - k
             )
 
         def hess(theta: Float[np.ndarray, "2"]) -> Float[np.ndarray, "2 2"]:
@@ -216,37 +231,47 @@ class SigmoidFitter:
 
 def find_h95(
     efficiency_at: Callable[[float], float],
+    detected_at: Callable[
+        [Float[np.ndarray, " n_drawn"]], Bool[np.ndarray, " n_drawn"]
+    ],
     h0_estimate: float,
     fitter: SigmoidFitter,
+    n_drawn: int = 2000,
     tolerance: float = 0.05,
-    max_rounds: int = 20,
+    max_rounds: int = 3,
 ) -> UpperLimit:
-    """h95 from the sigmoid fit of the efficiencies at BRACKET_FACTORS * h0_estimate, adding two strains
-    around h95 per round until its relative uncertainty is within tolerance and at least MIN_SETS_NEAR_H95
-    injection sets have an efficiency in NEAR_H95_EFFICIENCY. The two strains are h95 * (1 -+ step), step the
-    relative uncertainty but at least the tolerance."""
-    h0_values = [h0_estimate * factor for factor in BRACKET_FACTORS]
-    efficiencies = [efficiency_at(h0) for h0 in h0_values]
-    low, high = NEAR_H95_EFFICIENCY
+    """h95 from a sigmoid fit around it. The sets at BRACKET_FACTORS * h0_estimate (efficiency_at: the
+    efficiency of a set at one strain), fitted together, give a first h95. Each round then draws n_drawn
+    injections, each at its own strain log-uniform in DRAW_WINDOW * h95 (detected_at: which of the injections
+    at these strains are detected), and fits them alone. h95 is accepted when its relative uncertainty is
+    within tolerance and it lies within DRAW_WINDOW of the previous h95; otherwise the next round is centred
+    on it. On return, fitter holds the accepted fit."""
+    h0_values = np.array([h0_estimate * factor for factor in BRACKET_FACTORS])
+    efficiencies = np.array([efficiency_at(h0) for h0 in h0_values])
+    if not fitter.fit(h0_values, efficiencies):
+        raise RuntimeError("the sigmoid fit does not constrain h95")
+    centre, _ = fitter.get_h_percentile(0.95)
+    low, high = DRAW_WINDOW
     for _ in range(max_rounds):
-        if not fitter.fit(np.array(h0_values), np.array(efficiencies)):
+        if not np.isfinite(centre) or centre <= 0:
+            raise RuntimeError(
+                f"the sigmoid fit does not constrain h95 (h95 = {centre:.3e})"
+            )
+        drawn_h0 = centre * np.exp(
+            np.random.uniform(np.log(low), np.log(high), n_drawn)
+        )
+        detected = np.asarray(detected_at(drawn_h0), dtype=bool)
+        if not fitter.fit_counts(drawn_h0, detected.astype(float), np.ones(n_drawn)):
             raise RuntimeError("the sigmoid fit does not constrain h95")
         h95, dh95 = fitter.get_h_percentile(0.95)
         relative = dh95 / h95
-        if not np.isfinite(relative) or h95 <= 0:
-            raise RuntimeError(
-                f"the sigmoid fit does not constrain h95 (h95 = {h95:.3e} +- {dh95:.3e})"
-            )
-        n_near = sum(low <= efficiency <= high for efficiency in efficiencies)
         logging.info(
-            f"h95 = {h95:.3e} +- {abs(relative):.2%}, {n_near} sets with efficiency in [{low}, {high}]"
+            f"h95 = {h95:.3e} +- {abs(relative):.2%} from {n_drawn} injections around {centre:.3e} "
+            f"({detected.mean():.2%} detected)"
         )
-        if abs(relative) <= tolerance and n_near >= MIN_SETS_NEAR_H95:
-            return UpperLimit(h95, dh95, np.array(h0_values), np.array(efficiencies))
-        step = max(abs(relative), tolerance)
-        for h0 in (h95 * (1 - step), h95 * (1 + step)):
-            h0_values.append(h0)
-            efficiencies.append(efficiency_at(h0))
+        if abs(relative) <= tolerance and low <= h95 / centre <= high:
+            return UpperLimit(h95, dh95, h0_values, efficiencies, drawn_h0, detected)
+        centre = h95
     raise RuntimeError(
-        f"h95 did not converge to {tolerance:.0%} with {MIN_SETS_NEAR_H95} sets near h95 in {max_rounds} rounds"
+        f"h95 did not converge to {tolerance:.0%} around h95 in {max_rounds} rounds"
     )
