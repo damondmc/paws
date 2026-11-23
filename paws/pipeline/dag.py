@@ -138,6 +138,10 @@ def write_injection_followup_dag(context: StageContext, freq: int) -> Optional[P
 
 def write_upperlimit_dag(context: StageContext, freq: int) -> Optional[Path]:
     stage = context.stage
+    if stage.injection.draw_window is None:
+        raise ValueError(
+            f"{stage.name}: an upper-limit DAG needs injection draw_window and n_drawn"
+        )
     search_file, non_saturated_bands = non_saturated_search_file(context, freq)
     if search_file is None:
         return None
@@ -168,6 +172,8 @@ def write_upperlimit_dag(context: StageContext, freq: int) -> Optional[Path]:
         h0_est=context.h0_by_freq()[freq],
         n_inj=stage.injection.n_inj,
         n_spacing=context.settings.followup.n_spacing,
+        draw_window=stage.injection.draw_window,
+        n_drawn=stage.injection.n_drawn,
         request_memory=stage.request_memory,
         request_disk=stage.request_disk,
         request_cpu=stage.request_cpu,

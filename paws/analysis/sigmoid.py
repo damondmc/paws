@@ -1,40 +1,16 @@
 """Sigmoid fit of the detection efficiency against the injected strain, for the h95 upper limit."""
 
 import logging
-from collections.abc import Callable
 from pathlib import Path
-from typing import NamedTuple, Optional, Union
+from typing import Optional, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
-from jaxtyping import Bool, Float, Real
+from jaxtyping import Float, Real
 from matplotlib.figure import Figure
 from scipy.optimize import minimize
 
 from paws.settings import Target
-
-BRACKET_FACTORS = (
-    0.5,
-    0.7,
-    1.0,
-    1.5,
-)  # first strains tried, as factors of the h0 estimate
-DRAW_WINDOW = (
-    0.8,
-    1.2,
-)  # range of h0 / h95 over which the strains of the drawn injections are log-uniform
-
-
-class UpperLimit(NamedTuple):
-    """h95 with its fit uncertainty, the starting sets (strain, efficiency) and the drawn injections of the
-    round that gave h95 (strain, detected)."""
-
-    h95: float
-    dh95: float
-    h0: Float[np.ndarray, " n_set"]
-    efficiency: Float[np.ndarray, " n_set"]
-    drawn_h0: Float[np.ndarray, " n_drawn"]
-    drawn_detected: Bool[np.ndarray, " n_drawn"]
 
 
 class SigmoidFitter:
@@ -227,51 +203,3 @@ class SigmoidFitter:
             fig.savefig(save_path, dpi=150, bbox_inches="tight")
             plt.close(fig)
         return fig
-
-
-def find_h95(
-    efficiency_at: Callable[[float], float],
-    detected_at: Callable[
-        [Float[np.ndarray, " n_drawn"]], Bool[np.ndarray, " n_drawn"]
-    ],
-    h0_estimate: float,
-    fitter: SigmoidFitter,
-    n_drawn: int = 2000,
-    tolerance: float = 0.05,
-    max_rounds: int = 3,
-) -> UpperLimit:
-    """h95 from a sigmoid fit around it. The sets at BRACKET_FACTORS * h0_estimate (efficiency_at: the
-    efficiency of a set at one strain), fitted together, give a first h95. Each round then draws n_drawn
-    injections, each at its own strain log-uniform in DRAW_WINDOW * h95 (detected_at: which of the injections
-    at these strains are detected), and fits them alone. h95 is accepted when its relative uncertainty is
-    within tolerance and it lies within DRAW_WINDOW of the previous h95; otherwise the next round is centred
-    on it. On return, fitter holds the accepted fit."""
-    h0_values = np.array([h0_estimate * factor for factor in BRACKET_FACTORS])
-    efficiencies = np.array([efficiency_at(h0) for h0 in h0_values])
-    if not fitter.fit(h0_values, efficiencies):
-        raise RuntimeError("the sigmoid fit does not constrain h95")
-    centre, _ = fitter.get_h_percentile(0.95)
-    low, high = DRAW_WINDOW
-    for _ in range(max_rounds):
-        if not np.isfinite(centre) or centre <= 0:
-            raise RuntimeError(
-                f"the sigmoid fit does not constrain h95 (h95 = {centre:.3e})"
-            )
-        drawn_h0 = centre * np.exp(
-            np.random.uniform(np.log(low), np.log(high), n_drawn)
-        )
-        detected = np.asarray(detected_at(drawn_h0), dtype=bool)
-        if not fitter.fit_counts(drawn_h0, detected.astype(float), np.ones(n_drawn)):
-            raise RuntimeError("the sigmoid fit does not constrain h95")
-        h95, dh95 = fitter.get_h_percentile(0.95)
-        relative = dh95 / h95
-        logging.info(
-            f"h95 = {h95:.3e} +- {abs(relative):.2%} from {n_drawn} injections around {centre:.3e} "
-            f"({detected.mean():.2%} detected)"
-        )
-        if abs(relative) <= tolerance and low <= h95 / centre <= high:
-            return UpperLimit(h95, dh95, h0_values, efficiencies, drawn_h0, detected)
-        centre = h95
-    raise RuntimeError(
-        f"h95 did not converge to {tolerance:.0%} around h95 in {max_rounds} rounds"
-    )

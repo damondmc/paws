@@ -7,15 +7,16 @@ import argparse
 import logging
 import sys
 import time
+from collections.abc import Callable
 from itertools import count
 from pathlib import Path
-from typing import Optional, Union
+from typing import NamedTuple, Optional, Union
 
 import numpy as np
 from astropy.io import fits
 from jaxtyping import Bool, Float, Shaped
 
-from paws.analysis.sigmoid import SigmoidFitter, find_h95
+from paws.analysis.sigmoid import SigmoidFitter
 from paws.definitions import WEAVE_EXTRA_STATISTICS, phase_param_name
 from paws.jobs.weave_runner import EfficiencyRun, determine_efficiency
 from paws.params.injections import InjectionParamGenerator
@@ -38,6 +39,75 @@ def print_args(args: argparse.Namespace) -> None:
     for key, value in vars(args).items():
         logging.info(f"{key:<25} : {value}")
     logging.info("=" * 60 + "\n")
+
+
+BRACKET_FACTORS = (
+    0.5,
+    0.7,
+    1.0,
+    1.5,
+)  # strains of the starting sets, as factors of the h0 estimate
+
+
+class UpperLimit(NamedTuple):
+    """h95 with its fit uncertainty, the starting sets (strain, efficiency) and the drawn injections of the
+    round that gave h95 (strain, detected)."""
+
+    h95: float
+    dh95: float
+    h0: Float[np.ndarray, " n_set"]
+    efficiency: Float[np.ndarray, " n_set"]
+    drawn_h0: Float[np.ndarray, " n_drawn"]
+    drawn_detected: Bool[np.ndarray, " n_drawn"]
+
+
+def find_h95(
+    efficiency_at: Callable[[float], float],
+    detected_at: Callable[
+        [Float[np.ndarray, " n_drawn"]], Bool[np.ndarray, " n_drawn"]
+    ],
+    h0_estimate: float,
+    fitter: SigmoidFitter,
+    draw_window: tuple[float, float],
+    n_drawn: int,
+    tolerance: float = 0.05,
+    max_rounds: int = 3,
+) -> UpperLimit:
+    """h95 from a sigmoid fit around it. The sets at BRACKET_FACTORS * h0_estimate (efficiency_at: the
+    efficiency of a set at one strain), fitted together, give a first h95. Each round then draws n_drawn
+    injections, each at its own strain log-uniform in draw_window * h95 (detected_at: which of the injections
+    at these strains are detected), and fits them alone. h95 is accepted when its relative uncertainty is
+    within tolerance and it lies within draw_window of the previous h95; otherwise the next round is centred
+    on it. On return, fitter holds the accepted fit."""
+    h0_values = np.array([h0_estimate * factor for factor in BRACKET_FACTORS])
+    efficiencies = np.array([efficiency_at(h0) for h0 in h0_values])
+    if not fitter.fit(h0_values, efficiencies):
+        raise RuntimeError("the sigmoid fit does not constrain h95")
+    centre, _ = fitter.get_h_percentile(0.95)
+    low, high = draw_window
+    for _ in range(max_rounds):
+        if not np.isfinite(centre) or centre <= 0:
+            raise RuntimeError(
+                f"the sigmoid fit does not constrain h95 (h95 = {centre:.3e})"
+            )
+        drawn_h0 = centre * np.exp(
+            np.random.uniform(np.log(low), np.log(high), n_drawn)
+        )
+        detected = np.asarray(detected_at(drawn_h0), dtype=bool)
+        if not fitter.fit_counts(drawn_h0, detected.astype(float), np.ones(n_drawn)):
+            raise RuntimeError("the sigmoid fit does not constrain h95")
+        h95, dh95 = fitter.get_h_percentile(0.95)
+        relative = dh95 / h95
+        logging.info(
+            f"h95 = {h95:.3e} +- {abs(relative):.2%} from {n_drawn} injections around {centre:.3e} "
+            f"({detected.mean():.2%} detected)"
+        )
+        if abs(relative) <= tolerance and low <= h95 / centre <= high:
+            return UpperLimit(h95, dh95, h0_values, efficiencies, drawn_h0, detected)
+        centre = h95
+    raise RuntimeError(
+        f"h95 did not converge to {tolerance:.0%} around h95 in {max_rounds} rounds"
+    )
 
 
 def scale_injection(
@@ -83,8 +153,8 @@ def injection_sets_hdu(sets: list[tuple[float, EfficiencyRun]]) -> fits.BinTable
 def drawn_injections_hdu(
     draws: list[
         tuple[
-            Shaped[np.ndarray, " n_drawn"],
-            Float[np.ndarray, " n_drawn"],
+            Shaped[np.ndarray, " _n_drawn"],
+            Float[np.ndarray, " _n_drawn"],
             EfficiencyRun,
         ]
     ],
@@ -152,6 +222,14 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     add("--n_inj", type=int, required=True, help="injections per set")
     add("--num_toplist", type=int, required=True, help="candidates kept per Weave run")
     add("--h0_est", type=float, required=True, help="first h0 estimate")
+    add(
+        "--draw_window",
+        type=float,
+        nargs=2,
+        required=True,
+        help="h0 / h95 range of the drawn injections (log-uniform)",
+    )
+    add("--n_drawn", type=int, required=True, help="drawn injections per round")
     add("--mean2f_th", type=float, required=True, help="mean2F detection threshold")
     add(
         "--non_sat_bands",
@@ -317,7 +395,14 @@ def upper_limit(settings: FixedSettings, args: argparse.Namespace) -> Path:
 
     log_section("EFFICIENCY LOOP START")
     fitter = SigmoidFitter(target, n_inj=n_inj, n_amp=1)
-    limit = find_h95(efficiency_at, detected_at, args.h0_est, fitter)
+    limit = find_h95(
+        efficiency_at,
+        detected_at,
+        args.h0_est,
+        fitter,
+        tuple(args.draw_window),
+        args.n_drawn,
+    )
     h95 = limit.h95
 
     logging.info(

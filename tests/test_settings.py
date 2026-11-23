@@ -120,6 +120,27 @@ def test_upperlimit_needs_injection(config_dir):
         Stage.model_validate(raw)
 
 
+def test_draw_window_is_for_upper_limits_only(config_dir):
+    raw = stage_fields(config_dir, "injections-0")
+    raw["injection"] = {**raw["injection"], "draw_window": (0.9, 1.1), "n_drawn": 2000}
+    with pytest.raises(ValidationError, match="upper-limit"):
+        Stage.model_validate(raw)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"draw_window": (0.9, 1.1), "n_drawn": None},
+        {"draw_window": (1.1, 1.3), "n_drawn": 2000},
+    ],
+)
+def test_draw_window_needs_n_drawn_and_contains_one(config_dir, fields):
+    raw = stage_fields(config_dir, "injections-0")
+    raw["injection"] = {**raw["injection"], **fields}
+    with pytest.raises(ValidationError, match="draw_window"):
+        Stage.model_validate(raw)
+
+
 def test_new_injections_need_n_inj_and_h0_file(config_dir):
     raw = load(config_dir, "followup.yaml")
     raw["stages"]["injections-0"]["injection"]["h0_file"] = None

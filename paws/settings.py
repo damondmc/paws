@@ -107,6 +107,21 @@ class Injection(YamlModel):
     n_inj: Optional[int]  # injections per band; null: the seeds' injections
     # relative to home_dir, columns freq, h0, ...; null: the seeds' injections
     h0_file: Optional[str]
+    # upper limit: n_drawn injections, each at its own h0 log-uniform in draw_window x the h95 located by the
+    # starting sets, fitted for h95 (see paws.jobs.upperlimit.find_h95); null in other stages
+    draw_window: Optional[tuple[float, float]]
+    n_drawn: Optional[int] = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _check(self) -> "Injection":
+        if (self.draw_window is None) != (self.n_drawn is None):
+            raise ValueError("draw_window and n_drawn are set together")
+        if (
+            self.draw_window is not None
+            and not 0 < self.draw_window[0] < 1 < self.draw_window[1]
+        ):
+            raise ValueError(f"draw_window {self.draw_window} must contain 1")
+        return self
 
 
 class Stage(YamlModel):
@@ -180,6 +195,14 @@ class Stage(YamlModel):
                 )
         if self.upperlimit and not self.is_injection:
             raise ValueError(f"{self.name}: an upper limit needs injection")
+        if (
+            self.is_injection
+            and not self.upperlimit
+            and self.injection.draw_window is not None
+        ):
+            raise ValueError(
+                f"{self.name}: draw_window and n_drawn are for upper-limit stages"
+            )
         if self.sky_grid is None and self.n_sky != 1:
             raise ValueError(f"{self.name}: n_sky={self.n_sky} without a sky_grid")
         if self.sky_metric is not None and self.sky_radius <= 0:

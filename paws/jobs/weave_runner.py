@@ -29,15 +29,16 @@ class EfficiencyRun(NamedTuple):
 
 
 def loudest_mean2f(result_files: list[str], n_sky: int) -> Float[np.ndarray, " n_inj"]:
-    """Loudest mean2F of each injection over its n_sky consecutive Weave result files (-inf if all their
-    toplists are empty)."""
+    """Loudest mean2F of each injection over its n_sky consecutive Weave result files. Raises a RuntimeError
+    if a result file has an empty toplist, since an injection without a Weave result would count as missed."""
     loudest = np.full(len(result_files), np.nan)
     for i, path in enumerate(result_files):
         with fits.open(path) as hdul:
             data = hdul[1].data
-            if data is not None and len(data) > 0:
-                loudest[i] = np.max(data["mean2F"])
-    return np.nanmax(loudest.reshape(-1, n_sky), axis=1, initial=-np.inf)
+        if data is None or len(data) == 0:
+            raise RuntimeError(f"Weave result {path} has an empty toplist")
+        loudest[i] = np.max(data["mean2F"])
+    return loudest.reshape(-1, n_sky).max(axis=1)
 
 
 def delete_files(result_file_list: Iterable[Union[str, Path]]) -> None:
@@ -158,9 +159,10 @@ def injection_job(
         print(f"[injection_job stdout] {result_file}:\n{proc.stdout}")
     if proc.stderr:
         print(f"[injection_job stderr] {result_file}:\n{proc.stderr}")
-
-    # subprocess.run(command, shell=True, capture_output=True, text=True)
-
+    if proc.returncode != 0 or not Path(result_file).is_file():
+        raise RuntimeError(
+            f"Weave injection run for {result_file} failed (exit status {proc.returncode}): {proc.stderr[-2000:]}"
+        )
     return result_file
 
 

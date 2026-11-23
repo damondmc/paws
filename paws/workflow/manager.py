@@ -436,6 +436,8 @@ class WorkflowManager:
         n_inj: int,
         num_toplist: int,
         h0_est: float,
+        draw_window: tuple[float, float],
+        n_drawn: int,
         mean2f_th: float,
         non_sat_bands: Float[np.ndarray, " n_subband"],
         sky_radius: float,
@@ -458,6 +460,7 @@ class WorkflowManager:
             f"--df_grid {df_grid_str} --inj_freq_deriv_order {inj_freq_deriv_order} "
             f"--sft_files '{sft_files_local}' --metric_file {metric_file_local} "
             f"--n_inj {n_inj} --num_toplist {num_toplist} --h0_est {h0_est} "
+            f"--draw_window {draw_window[0]} {draw_window[1]} --n_drawn {n_drawn} "
             f"--mean2f_th {mean2f_th} --non_sat_bands {bands_str} "
             f"--sky_radius {sky_radius} --n_spacing {n_spacing} --n_cpus {request_cpu}"
         )
@@ -526,6 +529,8 @@ class WorkflowManager:
         non_sat_bands: Float[np.ndarray, " n_subband"],
         exe: Optional[str],
         n_spacing: float,
+        draw_window: tuple[float, float],
+        n_drawn: int,
         df_grid: list[float] = [1e-6, 1e-13, 1e-20],
         inj_freq_deriv_order: int = 4,
         num_toplist: int = 1,
@@ -574,6 +579,8 @@ class WorkflowManager:
             n_inj=n_inj,
             num_toplist=num_toplist,
             h0_est=h0_est,
+            draw_window=draw_window,
+            n_drawn=n_drawn,
             mean2f_th=mean2f_th,
             non_sat_bands=non_sat_bands,
             sky_radius=sky_radius,

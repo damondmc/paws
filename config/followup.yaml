@@ -58,15 +58,17 @@ x-t20: &t20 {tcoh: 20, order: 2, n_seg: 27, metric: o4ab_t20_s2.fts}
 # sky grid around each seed: (d_alpha, d_delta) offsets in this directory, n_sky points
 x-grid: &grid {sky_grid: sky_grid.txt, n_sky: 9}
 # an injection follow-up takes its seeds' injections
-x-seed-injections: &seed_injections {order: 4, n_inj: null, h0_file: null}
+x-seed-injections: &seed_injections {order: 4, n_inj: null, h0_file: null, draw_window: null, n_drawn: null}
 
 stages:
   upperlimit:  # its jobs inject and run Weave themselves
     <<: [*t5, *base]
     prev: search-0
     upperlimit: true
-    # injections: spin-down order, number per band, h0 file relative to home_dir
-    injection: {order: 4, n_inj: 200, h0_file: postprocess/data/h0_estimate.txt}
+    # injections: spin-down order, number per starting set, h0 file relative to home_dir; then n_drawn
+    # injections, each at its own h0 log-uniform in draw_window x the h95 the starting sets locate, give h95
+    injection: {order: 4, n_inj: 200, h0_file: postprocess/data/h0_estimate.txt,
+                draw_window: [0.9, 1.1], n_drawn: 2000}
     sky_radius: 1.25e-4  # radius [rad] of the injection sky cap
     tasks_per_job: 1
     request_memory: 16GB
@@ -76,7 +78,8 @@ stages:
   injections-0:  # new injections in the non-saturated sub-bands of search-0
     <<: [*t5, *base]
     prev: search-0
-    injection: {order: 4, n_inj: 20, h0_file: postprocess/data/h0_upperlimit.txt}
+    injection: {order: 4, n_inj: 20, h0_file: postprocess/data/h0_upperlimit.txt,
+                draw_window: null, n_drawn: null}
     sky_radius: 1.25e-4
     tasks_per_job: 20
     request_memory: 3GB
